@@ -1038,9 +1038,9 @@ function t2() {
   function be(e) {
     te.current === e && (ce(H), ce(te)), ue.current === e && (ce(ue), As._currentValue = K);
   }
-  var me = Object.prototype.hasOwnProperty, fe = n.unstable_scheduleCallback, we = n.unstable_cancelCallback, Pe = n.unstable_shouldYield, We = n.unstable_requestPaint, Fe = n.unstable_now, Rn = n.unstable_getCurrentPriorityLevel, dt = n.unstable_ImmediatePriority, ve = n.unstable_UserBlockingPriority, ye = n.unstable_NormalPriority, qe = n.unstable_LowPriority, Ze = n.unstable_IdlePriority, tt = n.log, qn = n.unstable_setDisableYieldValue, jn = null, mt = null;
+  var me = Object.prototype.hasOwnProperty, fe = n.unstable_scheduleCallback, we = n.unstable_cancelCallback, Pe = n.unstable_shouldYield, We = n.unstable_requestPaint, Fe = n.unstable_now, Rn = n.unstable_getCurrentPriorityLevel, dt = n.unstable_ImmediatePriority, ve = n.unstable_UserBlockingPriority, ye = n.unstable_NormalPriority, qe = n.unstable_LowPriority, Ze = n.unstable_IdlePriority, et = n.log, qn = n.unstable_setDisableYieldValue, jn = null, mt = null;
   function Zn(e) {
-    if (typeof tt == "function" && qn(e), mt && typeof mt.setStrictMode == "function")
+    if (typeof et == "function" && qn(e), mt && typeof mt.setStrictMode == "function")
       try {
         mt.setStrictMode(jn, e);
       } catch {
@@ -5756,7 +5756,7 @@ Error generating stack: ` + a.message + `
         } while (a !== d);
       }
     } catch (D) {
-      et(t, t.return, D);
+      tt(t, t.return, D);
     }
   }
   function jr(e, t, a) {
@@ -5774,7 +5774,7 @@ Error generating stack: ` + a.message + `
               try {
                 Q();
               } catch (ie) {
-                et(
+                tt(
                   d,
                   U,
                   ie
@@ -5786,7 +5786,7 @@ Error generating stack: ` + a.message + `
         } while (o !== _);
       }
     } catch (ie) {
-      et(t, t.return, ie);
+      tt(t, t.return, ie);
     }
   }
   function Tm(e) {
@@ -5796,7 +5796,7 @@ Error generating stack: ` + a.message + `
       try {
         pp(t, a);
       } catch (o) {
-        et(e, e.return, o);
+        tt(e, e.return, o);
       }
     }
   }
@@ -5808,7 +5808,7 @@ Error generating stack: ` + a.message + `
     try {
       a.componentWillUnmount();
     } catch (o) {
-      et(e, t, o);
+      tt(e, t, o);
     }
   }
   function hs(e, t) {
@@ -5830,7 +5830,7 @@ Error generating stack: ` + a.message + `
         typeof a == "function" ? e.refCleanup = a(o) : a.current = o;
       }
     } catch (d) {
-      et(e, t, d);
+      tt(e, t, d);
     }
   }
   function $n(e, t) {
@@ -5840,7 +5840,7 @@ Error generating stack: ` + a.message + `
         try {
           o();
         } catch (d) {
-          et(e, t, d);
+          tt(e, t, d);
         } finally {
           e.refCleanup = null, e = e.alternate, e != null && (e.refCleanup = null);
         }
@@ -5848,7 +5848,7 @@ Error generating stack: ` + a.message + `
         try {
           a(null);
         } catch (d) {
-          et(e, t, d);
+          tt(e, t, d);
         }
       else a.current = null;
   }
@@ -5866,7 +5866,7 @@ Error generating stack: ` + a.message + `
           a.src ? o.src = a.src : a.srcSet && (o.srcset = a.srcSet);
       }
     } catch (d) {
-      et(e, e.return, d);
+      tt(e, e.return, d);
     }
   }
   function Kc(e, t, a) {
@@ -5874,7 +5874,7 @@ Error generating stack: ` + a.message + `
       var o = e.stateNode;
       Gb(o, e.type, a, t), o[Qt] = t;
     } catch (d) {
-      et(e, e.return, d);
+      tt(e, e.return, d);
     }
   }
   function Om(e) {
@@ -5916,7 +5916,7 @@ Error generating stack: ` + a.message + `
         t.removeAttributeNode(d[0]);
       Dt(t, o, a), t[It] = e, t[Qt] = a;
     } catch (_) {
-      et(e, e.return, _);
+      tt(e, e.return, _);
     }
   }
   var hr = !1, vt = !1, ed = !1, Rm = typeof WeakSet == "function" ? WeakSet : Set, Nt = null;
@@ -5982,7 +5982,7 @@ Error generating stack: ` + a.message + `
                     _
                   ), o.__reactInternalSnapshotBeforeUpdate = e;
                 } catch (Ee) {
-                  et(
+                  tt(
                     a,
                     a.return,
                     Ee
@@ -6037,7 +6037,7 @@ Error generating stack: ` + a.message + `
             try {
               e.componentDidMount();
             } catch (T) {
-              et(a, a.return, T);
+              tt(a, a.return, T);
             }
           else {
             var d = va(
@@ -6052,7 +6052,7 @@ Error generating stack: ` + a.message + `
                 e.__reactInternalSnapshotBeforeUpdate
               );
             } catch (T) {
-              et(
+              tt(
                 a,
                 a.return,
                 T
@@ -6075,7 +6075,7 @@ Error generating stack: ` + a.message + `
           try {
             pp(e, t);
           } catch (T) {
-            et(a, a.return, T);
+            tt(a, a.return, T);
           }
         }
         break;
@@ -6155,7 +6155,7 @@ Error generating stack: ` + a.message + `
             try {
               (at.nodeType === 9 ? at.body : at.nodeName === "HTML" ? at.ownerDocument.body : at).removeChild(a.stateNode);
             } catch (_) {
-              et(
+              tt(
                 a,
                 t,
                 _
@@ -6165,7 +6165,7 @@ Error generating stack: ` + a.message + `
             try {
               at.removeChild(a.stateNode);
             } catch (_) {
-              et(
+              tt(
                 a,
                 t,
                 _
@@ -6233,7 +6233,7 @@ Error generating stack: ` + a.message + `
       try {
         Os(e);
       } catch (a) {
-        et(t, t.return, a);
+        tt(t, t.return, a);
       }
   }
   function kb(e) {
@@ -6390,7 +6390,7 @@ Error generating stack: ` + a.message + `
           try {
             Za(d, "");
           } catch (ee) {
-            et(e, e.return, ee);
+            tt(e, e.return, ee);
           }
         }
         o & 4 && e.stateNode != null && (d = e.memoizedProps, Kc(
@@ -6407,7 +6407,7 @@ Error generating stack: ` + a.message + `
           try {
             a.nodeValue = o;
           } catch (ee) {
-            et(e, e.return, ee);
+            tt(e, e.return, ee);
           }
         }
         break;
@@ -6416,7 +6416,7 @@ Error generating stack: ` + a.message + `
           try {
             Os(t.containerInfo);
           } catch (ee) {
-            et(e, e.return, ee);
+            tt(e, e.return, ee);
           }
         ed && (ed = !1, Im(e));
         break;
@@ -6448,7 +6448,7 @@ Error generating stack: ` + a.message + `
                     D.style.display = J == null || typeof J == "boolean" ? "" : ("" + J).trim();
                   }
                 } catch (ee) {
-                  et(U, U.return, ee);
+                  tt(U, U.return, ee);
                 }
               }
             } else if (t.tag === 6) {
@@ -6457,7 +6457,7 @@ Error generating stack: ` + a.message + `
                 try {
                   U.stateNode.nodeValue = d ? "" : U.memoizedProps;
                 } catch (ee) {
-                  et(U, U.return, ee);
+                  tt(U, U.return, ee);
                 }
               }
             } else if ((t.tag !== 22 && t.tag !== 23 || t.memoizedState === null || t === e) && t.child !== null) {
@@ -6520,7 +6520,7 @@ Error generating stack: ` + a.message + `
             throw Error(i(161));
         }
       } catch (ie) {
-        et(e, e.return, ie);
+        tt(e, e.return, ie);
       }
       e.flags &= -3;
     }
@@ -6597,7 +6597,7 @@ Error generating stack: ` + a.message + `
             try {
               d.componentDidMount();
             } catch (Q) {
-              et(o, o.return, Q);
+              tt(o, o.return, Q);
             }
           if (o = _, d = o.updateQueue, d !== null) {
             var D = o.stateNode;
@@ -6607,7 +6607,7 @@ Error generating stack: ` + a.message + `
                 for (d.shared.hiddenCallbacks = null, d = 0; d < U.length; d++)
                   hp(U[d], D);
             } catch (Q) {
-              et(o, o.return, Q);
+              tt(o, o.return, Q);
             }
           }
           a && T & 64 && Tm(_), hs(_, _.return);
@@ -6718,7 +6718,7 @@ Error generating stack: ` + a.message + `
               -0
             );
           } catch (U) {
-            et(t, t.return, U);
+            tt(t, t.return, U);
           }
         } else
           Xn(
@@ -7664,7 +7664,7 @@ Error generating stack: ` + a.message + `
   function sg(e, t, a) {
     t = En(a, t), t = qc(e.stateNode, t, 2), e = Nr(e, t, 2), e !== null && (Li(e, 2), Fn(e));
   }
-  function et(e, t, a) {
+  function tt(e, t, a) {
     if (e.tag === 3)
       sg(e, e, a);
     else
@@ -11697,7 +11697,7 @@ async function ny(n, {
   re = await Promise.all(
     re.map(async (ve, ye) => {
       var qe, Ze;
-      let tt = ve.mes, qn = ve.is_user ? $g.USER_INPUT : $g.AI_OUTPUT, jn = { isPrompt: !0, depth: re.length - ye - 1 }, mt = a3(tt, qn, jn);
+      let et = ve.mes, qn = ve.is_user ? $g.USER_INPUT : $g.AI_OUTPUT, jn = { isPrompt: !0, depth: re.length - ye - 1 }, mt = a3(et, qn, jn);
       return mt = await s3(ve, mt), (qe = ve?.extra) != null && qe.append_title && (Ze = ve?.extra) != null && Ze.title && (mt = `${mt}
 
 ${ve.extra.title}`), {
@@ -11758,17 +11758,17 @@ ${ve.extra.title}`), {
       mesExamples: I.join(""),
       mesExamplesRaw: ve.join("")
     }, Ze = (h = j.getPresetManager("context")) == null ? void 0 : h.getCompletionPresetByName(u);
-    let tt = J2(qe, {
+    let et = J2(qe, {
       customInstructSettings: K,
       customStoryString: Ze?.story_string
     });
-    tt && H.add({ role: "system", content: tt, ignoreInstruct: !0 }), Fe();
+    et && H.add({ role: "system", content: et, ignoreInstruct: !0 }), Fe();
   } else {
     let ve = function(Gt) {
       const Ft = _n.find((za) => za.identifier === Gt);
       if (Ft)
         return Ft;
-      const oo = tt.prompts.find((za) => za.identifier === Gt);
+      const oo = et.prompts.find((za) => za.identifier === Gt);
       if (oo)
         return oo;
     }, ye = n3(re), qe = r3(I);
@@ -11799,22 +11799,22 @@ ${ve.extra.title}`), {
     }
     if (!s)
       return ce.push("No preset name provided. Using default preset."), await Ze(), { result: H.getMessages(), warnings: ce };
-    const tt = (C = j.getPresetManager("openai")) == null ? void 0 : C.getCompletionPresetByName(s);
-    if (!tt)
+    const et = (C = j.getPresetManager("openai")) == null ? void 0 : C.getCompletionPresetByName(s);
+    if (!et)
       return console.warn(`Preset not found: ${s}. Using current preset.`), ce.push(`Preset not found: ${s}. Using current preset.`), Ze(), { result: H.getMessages(), warnings: ce };
-    let qn = (A = tt.prompt_order) == null ? void 0 : A.find((Gt) => Gt.character_id === an);
-    if (!qn && tt.prompt_order && tt.prompt_order.length > 0 && (qn = tt.prompt_order[0]), !qn)
+    let qn = (A = et.prompt_order) == null ? void 0 : A.find((Gt) => Gt.character_id === an);
+    if (!qn && et.prompt_order && et.prompt_order.length > 0 && (qn = et.prompt_order[et.prompt_order.length - 1]), !qn)
       return console.warn(`No prompt order found for preset: ${s}. Using current preset.`), ce.push(`No prompt order found for preset: ${s}. Using current preset.`), Ze(), { result: H.getMessages(), warnings: ce };
-    const jn = Y && tt.scenario_format ? j.substituteParams(tt.scenario_format) : "", mt = Z && tt.personality_format ? j.substituteParams(tt.personality_format) : "", Zn = j.substituteParams(tt.group_nudge_prompt), Zt = tt.impersonation_prompt ? j.substituteParams(tt.impersonation_prompt) : "", _n = [];
+    const jn = Y && et.scenario_format ? j.substituteParams(et.scenario_format) : "", mt = Z && et.personality_format ? j.substituteParams(et.personality_format) : "", Zn = j.substituteParams(et.group_nudge_prompt), Zt = et.impersonation_prompt ? j.substituteParams(et.impersonation_prompt) : "", _n = [];
     g || _n.push(
       {
         role: "system",
-        content: pv(be, { wiFormat: tt.wi_format }),
+        content: pv(be, { wiFormat: et.wi_format }),
         identifier: "worldInfoBefore"
       },
       {
         role: "system",
-        content: pv(me, { wiFormat: tt.wi_format }),
+        content: pv(me, { wiFormat: et.wi_format }),
         identifier: "worldInfoAfter"
       }
     ), p || _n.push(
@@ -11924,8 +11924,8 @@ ${ve.extra.title}`), {
         $r
       ) || "";
       if (ye) {
-        const qe = A1, Ze = ((L = (R = (k = (w = j.characters[an]) == null ? void 0 : w.data) == null ? void 0 : k.extensions) == null ? void 0 : R.depth_prompt) == null ? void 0 : L.role) ?? k1, tt = H.getMessages();
-        H.insert(tt.length - qe, {
+        const qe = A1, Ze = ((L = (R = (k = (w = j.characters[an]) == null ? void 0 : w.data) == null ? void 0 : k.extensions) == null ? void 0 : R.depth_prompt) == null ? void 0 : L.role) ?? k1, et = H.getMessages();
+        H.insert(et.length - qe, {
           role: Ea(Ze),
           content: ye
         });
@@ -25365,8 +25365,8 @@ const ck = ({ originalContent: n, newContent: r }) => {
           if (!qe)
             Ze = !0;
           else {
-            const tt = (dt.content || "") !== (qe.content || ""), qn = (dt.comment || "") !== (qe.comment || ""), jn = (dt.key || []).sort().join(",") !== (qe.key || []).sort().join(",");
-            (tt || qn || jn) && (Ze = !0);
+            const et = (dt.content || "") !== (qe.content || ""), qn = (dt.comment || "") !== (qe.comment || ""), jn = (dt.key || []).sort().join(",") !== (qe.key || []).sort().join(",");
+            (et || qn || jn) && (Ze = !0);
           }
           Ze && (Pe[ye] || (Pe[ye] = []), Pe[ye].push(dt));
         }), fe.forEach((dt, ve) => {
