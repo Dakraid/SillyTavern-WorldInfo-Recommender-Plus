@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
 import type { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { getFull, getPrefilled, parseLorebookResponse, parseResponse } from '../parsers.js';
+import { WI_ENTRY_DEFAULTS } from '../types/wi-entry-extended.js';
 
 const mockSchema = {
   type: 'object',
@@ -205,7 +206,19 @@ describe('parseLorebookResponse', () => {
     }
 }`;
 
+  const createExpectedEntry = (overrides: Record<string, unknown> = {}) => ({
+    ...WI_ENTRY_DEFAULTS,
+    uid: 123456,
+    key: [] as string[],
+    keysecondary: [] as string[],
+    content: '',
+    comment: '',
+    disable: false,
+    ...overrides,
+  });
+
   const baseEntry: WIEntry = {
+    ...WI_ENTRY_DEFAULTS,
     uid: 123456,
     key: ['dragon', 'wyrm'],
     keysecondary: [],
@@ -214,17 +227,46 @@ describe('parseLorebookResponse', () => {
     disable: false,
   };
 
+  const tier1FieldOverrides = {
+    order: 42,
+    position: 1,
+    depth: 7,
+    role: 2,
+    selective: false,
+    selectiveLogic: 1,
+    constant: true,
+    probability: 65,
+    useProbability: false,
+    group: 'mythic-beasts',
+    groupWeight: 250,
+    groupOverride: true,
+  } satisfies Partial<WIEntry>;
+
+  const tier2FieldOverrides = {
+    excludeRecursion: true,
+    preventRecursion: true,
+    delayUntilRecursion: 3,
+    scanDepth: 8,
+    caseSensitive: true,
+    matchWholeWords: false,
+    sticky: 4,
+    cooldown: 2,
+    delay: 1,
+    addMemo: false,
+    matchPersonaDescription: true,
+    matchCharacterDescription: true,
+    outletName: 'Codex Outlet',
+  } satisfies Partial<WIEntry>;
+
   it('parses valid XML with a single entry', () => {
     expect(parseLorebookResponse(xmlSingleEntry, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: 12345,
           key: ['dragon', 'wyrm', 'drake'],
           content: 'Dragons are ancient creatures of immense power.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -258,14 +300,12 @@ describe('parseLorebookResponse', () => {
     expect(result['Fantasy World'][0].comment).toBe('Dragon Lore');
     expect(result['Fantasy World'][1].comment).toBe('Phoenix Lore');
     expect(result['SciFi World']).toEqual([
-      {
+      createExpectedEntry({
         uid: expect.any(Number),
         key: ['quantum', 'drive', 'ftl'],
         content: 'The quantum drive enables faster-than-light travel.',
         comment: 'Quantum Drive',
-        disable: false,
-        keysecondary: [],
-      },
+      }),
     ]);
   });
 
@@ -287,14 +327,12 @@ describe('parseLorebookResponse', () => {
 
     expect(parseLorebookResponse(content, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['dragon'],
           content: 'Should remain.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -302,14 +340,136 @@ describe('parseLorebookResponse', () => {
   it('parses valid JSON with a single entry', () => {
     expect(parseLorebookResponse(jsonSingleEntry, 'json')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: 12345,
           key: ['dragon', 'wyrm', 'drake'],
           content: 'Dragons are ancient creatures of immense power.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
+      ],
+    });
+  });
+
+  it('parses Tier 1 WI fields from JSON responses', () => {
+    const content = `
+{
+  "lorebooks": {
+    "entry": {
+      "worldName": "Fantasy World",
+      "id": 777,
+      "name": "Dragon Lore",
+      "triggers": ["dragon", "wyrm"],
+      "content": "Dragons are ancient creatures.",
+      "order": 42,
+      "position": 1,
+      "depth": 7,
+      "role": 2,
+      "selective": false,
+      "selectiveLogic": 1,
+      "constant": true,
+      "probability": 65,
+      "useProbability": false,
+      "group": "mythic-beasts",
+      "groupWeight": 250,
+      "groupOverride": true
+    }
+  }
+}`;
+
+    expect(parseLorebookResponse(content, 'json')).toEqual({
+      'Fantasy World': [
+        createExpectedEntry({
+          uid: 777,
+          key: ['dragon', 'wyrm'],
+          content: 'Dragons are ancient creatures.',
+          comment: 'Dragon Lore',
+          ...tier1FieldOverrides,
+        }),
+      ],
+    });
+  });
+
+  it('parses Tier 1 WI fields from XML responses', () => {
+    const content = `
+<lorebooks>
+  <entry>
+    <worldName>Fantasy World</worldName>
+    <id>778</id>
+    <name>Dragon Lore</name>
+    <triggers>dragon,wyrm</triggers>
+    <content>Dragons are ancient creatures.</content>
+    <order>42</order>
+    <position>1</position>
+    <depth>7</depth>
+    <role>2</role>
+    <selective>false</selective>
+    <selectiveLogic>1</selectiveLogic>
+    <constant>true</constant>
+    <probability>65</probability>
+    <useProbability>false</useProbability>
+    <group>mythic-beasts</group>
+    <groupWeight>250</groupWeight>
+    <groupOverride>true</groupOverride>
+  </entry>
+</lorebooks>`;
+
+    expect(parseLorebookResponse(content, 'xml')).toEqual({
+      'Fantasy World': [
+        createExpectedEntry({
+          uid: 778,
+          key: ['dragon', 'wyrm'],
+          content: 'Dragons are ancient creatures.',
+          comment: 'Dragon Lore',
+          ...tier1FieldOverrides,
+        }),
+      ],
+    });
+  });
+
+  it('keeps backward compatibility when responses only contain core fields', () => {
+    const entry = parseLorebookResponse(jsonSingleEntry, 'json')['Fantasy World'][0];
+
+    for (const [field, defaultValue] of Object.entries(WI_ENTRY_DEFAULTS)) {
+      expect(entry[field as keyof typeof WI_ENTRY_DEFAULTS]).toEqual(defaultValue);
+    }
+  });
+
+  it('parses Tier 2 WI fields from JSON responses', () => {
+    const content = `
+{
+  "lorebooks": {
+    "entry": {
+      "worldName": "Fantasy World",
+      "id": 779,
+      "name": "Dragon Lore",
+      "triggers": ["dragon"],
+      "content": "Dragons are ancient creatures.",
+      "excludeRecursion": true,
+      "preventRecursion": true,
+      "delayUntilRecursion": 3,
+      "scanDepth": 8,
+      "caseSensitive": true,
+      "matchWholeWords": false,
+      "sticky": 4,
+      "cooldown": 2,
+      "delay": 1,
+      "addMemo": false,
+      "matchPersonaDescription": true,
+      "matchCharacterDescription": true,
+      "outletName": "Codex Outlet"
+    }
+  }
+}`;
+
+    expect(parseLorebookResponse(content, 'json')).toEqual({
+      'Fantasy World': [
+        createExpectedEntry({
+          uid: 779,
+          key: ['dragon'],
+          content: 'Dragons are ancient creatures.',
+          comment: 'Dragon Lore',
+          ...tier2FieldOverrides,
+        }),
       ],
     });
   });
@@ -371,14 +531,12 @@ describe('parseLorebookResponse', () => {
 
     expect(parseLorebookResponse(content, 'json')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['dragon'],
           content: 'Should remain.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -473,14 +631,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['rune', 'script'],
           content: 'Use `castSpell()` with <ritual> markers and [code] blocks.',
           comment: 'Rune Notes',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -536,14 +692,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['encoded'],
           content: `Use <magic> & "quotes" and 'apostrophes' > safely.`,
           comment: 'Encoded Content',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -561,14 +715,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['cdata'],
           content: 'Dragons <wyrms> & "elders"',
           comment: 'CDATA Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -599,14 +751,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'xml')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['dragon', 'wyrm'],
           content: 'Dragons are ancient creatures.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -674,14 +824,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'json')).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['dragon', 'wyrm'],
           content: 'Dragons are ancient creatures.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -785,14 +933,12 @@ ${secondBlock}
 
     expect(parseLorebookResponse(content, 'xml', { previousContent })).toEqual({
       'Fantasy World': [
-        {
+        createExpectedEntry({
           uid: expect.any(Number),
           key: ['dragon', 'wyrm'],
           content: 'Dragons are ancient creatures of immense power.',
           comment: 'Dragon Lore',
-          disable: false,
-          keysecondary: [],
-        },
+        }),
       ],
     });
   });
@@ -899,5 +1045,50 @@ ${secondBlock}
     expect(parseLorebookResponse(getFull('Fantasy World', baseEntry, 'json'), 'json')).toEqual({
       'Fantasy World': [baseEntry],
     });
+  });
+
+  it('serializes non-default WI fields in getFull JSON output', () => {
+    const entry: WIEntry = {
+      ...baseEntry,
+      order: 42,
+      group: 'mythic-beasts',
+      outletName: 'Codex Outlet',
+      sticky: 4,
+    };
+
+    const result = JSON.parse(getFull('Fantasy World', entry, 'json')) as {
+      lorebooks: { entry: Record<string, unknown> };
+    };
+
+    expect(result.lorebooks.entry).toMatchObject({
+      worldName: 'Fantasy World',
+      id: 123456,
+      name: 'Dragon Lore',
+      triggers: ['dragon', 'wyrm'],
+      content: 'Dragons are ancient creatures of immense power.',
+      order: 42,
+      group: 'mythic-beasts',
+      outletName: 'Codex Outlet',
+      sticky: 4,
+    });
+    expect(result.lorebooks.entry).not.toHaveProperty('position');
+  });
+
+  it('serializes non-default WI fields in getFull XML output', () => {
+    const entry: WIEntry = {
+      ...baseEntry,
+      order: 42,
+      group: 'mythic-beasts',
+      outletName: 'Codex Outlet',
+      sticky: 4,
+    };
+
+    const result = getFull('Fantasy World', entry, 'xml');
+
+    expect(result).toContain('<order>42</order>');
+    expect(result).toContain('<group>mythic-beasts</group>');
+    expect(result).toContain('<outletName>Codex Outlet</outletName>');
+    expect(result).toContain('<sticky>4</sticky>');
+    expect(result).not.toContain('<position>0</position>');
   });
 });

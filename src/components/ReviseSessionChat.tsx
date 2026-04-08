@@ -27,6 +27,8 @@ import { BuildPromptOptions, buildPrompt } from 'sillytavern-utils-lib';
 import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { GlobalStatePopup } from './GlobalStatePopup.js';
 import * as Handlebars from 'handlebars';
+import { EXTENDED_WI_ENTRY_FIELDS } from '../types/wi-entry-extended.js';
+import { entriesDiffer } from '../utils/entry-comparison.js';
 
 const globalContext = SillyTavern.getContext();
 
@@ -35,6 +37,14 @@ const calculateNewState = (prevState: WIEntry, response: EntryRevisionResponse):
   newState.comment = response.name;
   newState.key = response.triggers;
   newState.content = response.content;
+
+  for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+    const value = (response as any)[field];
+    if (value !== undefined) {
+      (newState as any)[field] = value;
+    }
+  }
+
   return newState;
 };
 
@@ -63,6 +73,13 @@ const calculateNewGlobalState = (
         if (op.newName !== undefined) entryToChange.comment = op.newName;
         if (op.triggers !== undefined) entryToChange.key = op.triggers;
         if (op.content !== undefined) entryToChange.content = op.content;
+
+        for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+          const value = (op as any)[field];
+          if (value !== undefined) {
+            (entryToChange as any)[field] = value;
+          }
+        }
       } else {
         console.warn(`[WREC] Could not find entry to change: "${originalName}" in world "${worldName}"`);
         st_echo('warning', `Could not find entry to change: "${originalName}" in world "${worldName}"`);
@@ -83,6 +100,14 @@ const calculateNewGlobalState = (
         newEntry.comment = name;
         newEntry.key = triggers;
         newEntry.content = content;
+
+        for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+          const value = (op as any)[field];
+          if (value !== undefined) {
+            (newEntry as any)[field] = value;
+          }
+        }
+
         newState[worldName].push(newEntry);
       }
     }
@@ -221,13 +246,8 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
           let isChanged = false;
           if (!oldEntry) {
             isChanged = true; // Added
-          } else {
-            const contentChanged = (newEntry.content || '') !== (oldEntry.content || '');
-            const commentChanged = (newEntry.comment || '') !== (oldEntry.comment || '');
-            const keysChanged = (newEntry.key || []).sort().join(',') !== (oldEntry.key || []).sort().join(',');
-            if (contentChanged || commentChanged || keysChanged) {
-              isChanged = true; // Modified
-            }
+          } else if (entriesDiffer(newEntry, oldEntry)) {
+            isChanged = true; // Modified
           }
 
           if (isChanged) {

@@ -30,6 +30,7 @@ import { useForceUpdate } from '../hooks/useForceUpdate.js';
 import { SelectEntriesPopup, SelectEntriesPopupRef } from './SelectEntriesPopup.js';
 import { POPUP_TYPE } from 'sillytavern-utils-lib/types/popup';
 import { ReviseSessionManager } from './ReviseSessionManager.js';
+import { entriesDiffer, getExtendedFieldOverrides } from '../utils/entry-comparison.js';
 
 if (!Handlebars.helpers['join']) {
   Handlebars.registerHelper('join', function (array: any, separator: any) {
@@ -213,12 +214,7 @@ export const MainPopup: FC = () => {
 
       if (isUpdate) {
         // This is an update. Check if anything actually changed.
-        const contentChanged = (entry.content || '') !== (existingEntry!.content || '');
-        const commentChanged = (entry.comment || '') !== (existingEntry!.comment || '');
-        const keysChanged =
-          (entry.key || []).slice().sort().join(',') !== (existingEntry!.key || []).slice().sort().join(',');
-
-        if (!contentChanged && !commentChanged && !keysChanged) {
+        if (!entriesDiffer(entry, existingEntry!)) {
           return 'unchanged'; // Nothing to do.
         }
         targetEntry = existingEntry!;
@@ -230,7 +226,12 @@ export const MainPopup: FC = () => {
         worldInfoCopy[selectedWorldName].push(targetEntry);
       }
 
-      Object.assign(targetEntry, { key: entry.key, content: entry.content, comment: entry.comment });
+      Object.assign(targetEntry, {
+        key: entry.key,
+        content: entry.content,
+        comment: entry.comment,
+        ...getExtendedFieldOverrides(entry),
+      });
       setEntriesGroupByWorldName(worldInfoCopy);
 
       if (!skipSave) {
@@ -616,12 +617,7 @@ export const MainPopup: FC = () => {
           isSuggestion = true;
         } else {
           // The entry existed. We must check if it was modified.
-          const contentChanged = (revisedEntry.content || '') !== (originalEntry.content || '');
-          const commentChanged = (revisedEntry.comment || '') !== (originalEntry.comment || '');
-          const keysChanged =
-            (revisedEntry.key || []).slice().sort().join(',') !== (originalEntry.key || []).slice().sort().join(',');
-
-          if (contentChanged || commentChanged || keysChanged) {
+          if (entriesDiffer(revisedEntry, originalEntry)) {
             isSuggestion = true;
           }
         }

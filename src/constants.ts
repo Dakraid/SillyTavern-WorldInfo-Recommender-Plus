@@ -89,6 +89,40 @@ Content:
 
 Lorebooks are essential for long-term storytelling with AI.`;
 
+const DEFAULT_TIER_1_FIELD_GUIDE = `Optional Tier 1 fields (omit them when the default is fine):
+- "order": 100 — injection priority
+- "position": 0 — placement (0=before char, 1=after char, 2=before AN, 3=after AN, 4=at depth, 5=at depth from top, 6=before example messages, 7=after example messages)
+- "depth": 4 — position depth when position=4 or 5
+- "role": 0 — injection role (0=system, 1=user, 2=assistant)
+- "selective": true — requires secondary keys
+- "constant": false — always inject
+- "group": "" — grouped activation name
+- "probability": 100 — activation chance %
+- "excludeRecursion": false — skip during recursion
+- "preventRecursion": false — prevent recursive activation`;
+
+const DEFAULT_TIER_1_FIELD_DISPLAY = `{{#unless (eq entry.order 100)}}
+Order: {{entry.order}}
+{{/unless}}{{#unless (eq entry.position 0)}}
+Position: {{entry.position}}
+{{/unless}}{{#unless (eq entry.depth 4)}}
+Depth: {{entry.depth}}
+{{/unless}}{{#unless (eq entry.role 0)}}
+Role: {{entry.role}}
+{{/unless}}{{#if (eq entry.selective false)}}
+Selective: {{entry.selective}}
+{{/if}}{{#if entry.constant}}
+Constant: {{entry.constant}}
+{{/if}}{{#if entry.group}}
+Group: {{entry.group}}
+{{/if}}{{#unless (eq entry.probability 100)}}
+Probability: {{entry.probability}}
+{{/unless}}{{#if entry.excludeRecursion}}
+Exclude Recursion: {{entry.excludeRecursion}}
+{{/if}}{{#if entry.preventRecursion}}
+Prevent Recursion: {{entry.preventRecursion}}
+{{/if}}`;
+
 export const DEFAULT_CURRENT_LOREBOOKS = `{{#is_not_empty currentLorebooks}}
 ## CURRENT LOREBOOKS
 {{#each currentLorebooks}}
@@ -97,6 +131,7 @@ export const DEFAULT_CURRENT_LOREBOOKS = `{{#is_not_empty currentLorebooks}}
 ### (NAME: {{#if entry.comment}}{{entry.comment}}{{else}}*No name*{{/if}}) (ID: {{entry.uid}})
 Triggers: {{#if entry.key}}{{join entry.key ', '}}{{else}}*No triggers*{{/if}}
 Content: {{#if entry.content}}{{entry.content}}{{else}}*No content*{{/if}}
+${DEFAULT_TIER_1_FIELD_DISPLAY}
   {{/each}}
 {{/each}}
 {{/is_not_empty}}`;
@@ -116,6 +151,7 @@ export const DEFAULT_SUGGESTED_LOREBOOKS = `{{#is_not_empty suggestedLorebooks}}
 ### (NAME: {{#if entry.comment}}{{entry.comment}}{{else}}*No name*{{/if}}) (ID: {{entry.uid}})
 Triggers: {{#if entry.key}}{{join entry.key ', '}}{{else}}*No triggers*{{/if}}
 Content: {{#if entry.content}}{{entry.content}}{{else}}*No content*{{/if}}
+${DEFAULT_TIER_1_FIELD_DISPLAY}
   {{/each}}
 {{/each}}
 {{/is_not_empty}}`;
@@ -127,29 +163,33 @@ Respond with a JSON object using this structure:
 - "lorebooks" object containing an "entry" object (or array of entry objects for multiple entries)
 - Each entry has: "worldName" (string), "id" (number, optional - for updates), "name" (string), "triggers" (array of strings), "content" (string)
 
+${DEFAULT_TIER_1_FIELD_GUIDE}
+
 Example - Creating new entries:
 \`\`\`json
 {
   "lorebooks": {
-    "entry": [
-      {
-        "worldName": "World 1",
-        "name": "Book 1",
-        "triggers": ["word1", "word2"],
-        "content": "Content of book 1"
-      },
-      {
-        "worldName": "World 2",
-        "name": "Book 2",
-        "triggers": ["word3", "word4"],
-        "content": "Content of book 2"
-      }
-    ]
+    "entry": {
+      "worldName": "World 1",
+      "name": "Book 1",
+      "triggers": ["word1", "word2"],
+      "content": "Content of book 1",
+      "order": 100,
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "selective": true,
+      "constant": false,
+      "group": "",
+      "probability": 100,
+      "excludeRecursion": false,
+      "preventRecursion": false
+    }
   }
 }
 \`\`\`
 
-Example - Updating an existing entry (include the "id" field):
+Example - Updating an existing entry (include the "id" field; the same optional Tier 1 fields may also be included):
 \`\`\`json
 {
   "lorebooks": {
@@ -164,6 +204,8 @@ Example - Updating an existing entry (include the "id" field):
 }
 \`\`\`
 {{else}}
+${DEFAULT_TIER_1_FIELD_GUIDE}
+
 If you are creating a new entry you should write it like this:
 \`\`\`xml
 <lorebooks>
@@ -172,11 +214,21 @@ If you are creating a new entry you should write it like this:
         <name>Book 1</name>
         <triggers>word1,word2</triggers>
         <content>Content of book 1</content>
+        <order>100</order>
+        <position>0</position>
+        <depth>4</depth>
+        <role>0</role>
+        <selective>true</selective>
+        <constant>false</constant>
+        <group></group>
+        <probability>100</probability>
+        <excludeRecursion>false</excludeRecursion>
+        <preventRecursion>false</preventRecursion>
     </entry>
 </lorebooks>
 \`\`\`
 
-If you are updating an existing entry you should specify the id of the entry. Like this:
+If you are updating an existing entry you should specify the id of the entry. The same optional Tier 1 fields may also be included. Like this:
 \`\`\`xml
 <lorebooks>
     <entry>
@@ -241,6 +293,7 @@ export const DEFAULT_REVISE_GLOBAL_STATE_UPDATE_ADDED_MODIFIED = `{{#is_not_empt
 ### (NAME: {{#if entry.comment}}{{entry.comment}}{{else}}*No name*{{/if}}) (ID: {{entry.uid}})
 Triggers: {{#if entry.key}}{{join entry.key ', '}}{{else}}*No triggers*{{/if}}
 Content: {{#if entry.content}}{{entry.content}}{{else}}*No content*{{/if}}
+${DEFAULT_TIER_1_FIELD_DISPLAY}
   {{/each}}
 {{/each}}
 {{/is_not_empty}}`;

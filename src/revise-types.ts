@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { PromptEngineeringMode } from './settings.js';
 import { Message } from 'sillytavern-utils-lib';
+import { WI_ENTRY_DEFAULTS } from './types/wi-entry-extended.js';
 
 export const REVISE_SCHEMA_NAME = {
   ENTRY: 'EntryRevision',
@@ -11,11 +12,55 @@ export const REVISE_SCHEMA_NAME = {
 export const CHAT_HISTORY_PLACEHOLDER_ID = 'placeholder-chatHistory';
 
 // Schema for a single entry revision
+const Tier1Fields = {
+  order: z.number().default(WI_ENTRY_DEFAULTS.order).describe('Injection priority. Higher = earlier in prompt.'),
+  position: z
+    .number()
+    .default(WI_ENTRY_DEFAULTS.position)
+    .describe(
+      'Where content is placed. 0=before_char, 1=after_char, 2=before_anchor, 3=after_anchor, 4=at_depth, 5=at_depth_from_top, 6=top_of_chat, 7=bottom_of_chat.',
+    ),
+  depth: z.number().default(WI_ENTRY_DEFAULTS.depth).describe('Position depth. Used when position=4 or 5.'),
+  role: z.number().default(WI_ENTRY_DEFAULTS.role).describe('Injection role. 0=system, 1=user, 2=assistant.'),
+  selective: z.boolean().default(WI_ENTRY_DEFAULTS.selective).describe('Whether secondary key matching is enabled.'),
+  selectiveLogic: z
+    .number()
+    .default(WI_ENTRY_DEFAULTS.selectiveLogic)
+    .describe('Secondary key logic. 0=NOT_ANY, 1=NOT_ALL, 2=ANY, 3=ALL.'),
+  constant: z.boolean().default(WI_ENTRY_DEFAULTS.constant).describe('Always inject this entry.'),
+  probability: z.number().default(WI_ENTRY_DEFAULTS.probability).describe('Activation chance percentage (0-100).'),
+  useProbability: z.boolean().default(WI_ENTRY_DEFAULTS.useProbability).describe('Apply probability gate.'),
+  group: z.string().default(WI_ENTRY_DEFAULTS.group).describe('Entry group name for grouped activation.'),
+  groupWeight: z.number().default(WI_ENTRY_DEFAULTS.groupWeight).describe('Weight within the group.'),
+  groupOverride: z
+    .boolean()
+    .default(WI_ENTRY_DEFAULTS.groupOverride)
+    .describe('Allow group to override normal selection.'),
+} as const;
+
+const Tier2Fields = {
+  excludeRecursion: z.boolean().optional(),
+  preventRecursion: z.boolean().optional(),
+  delayUntilRecursion: z.number().optional(),
+  scanDepth: z.number().nullable().optional(),
+  caseSensitive: z.boolean().nullable().optional(),
+  matchWholeWords: z.boolean().nullable().optional(),
+  sticky: z.number().nullable().optional(),
+  cooldown: z.number().nullable().optional(),
+  delay: z.number().nullable().optional(),
+  addMemo: z.boolean().optional(),
+  matchPersonaDescription: z.boolean().optional(),
+  matchCharacterDescription: z.boolean().optional(),
+  outletName: z.string().optional(),
+} as const;
+
 export const EntryRevisionResponseSchema = z.object({
   justification: z.string().describe('A brief, friendly explanation of the changes made.'),
   name: z.string().describe("The entry's new name/comment."),
   triggers: z.array(z.string()).describe("The entry's new keywords/triggers."),
   content: z.string().describe("The entry's new content."),
+  ...Tier1Fields,
+  ...Tier2Fields,
 });
 export type EntryRevisionResponse = z.infer<typeof EntryRevisionResponseSchema>;
 
@@ -27,6 +72,8 @@ const GlobalOpAddSchema = z.object({
   name: z.string().describe("The new entry's name/comment."),
   triggers: z.array(z.string()).describe("The new entry's triggers."),
   content: z.string().describe("The new entry's content."),
+  ...Tier1Fields,
+  ...Tier2Fields,
 });
 
 const GlobalOpChangeSchema = z.object({
@@ -35,6 +82,19 @@ const GlobalOpChangeSchema = z.object({
   newName: z.string().optional().describe("The entry's new name/comment. If omitted, the name is not changed."),
   triggers: z.array(z.string()).optional().describe("The entry's new list of triggers."),
   content: z.string().optional().describe("The entry's new content."),
+  order: z.number().optional(),
+  position: z.number().optional(),
+  depth: z.number().optional(),
+  role: z.number().optional(),
+  selective: z.boolean().optional(),
+  selectiveLogic: z.number().optional(),
+  constant: z.boolean().optional(),
+  probability: z.number().optional(),
+  useProbability: z.boolean().optional(),
+  group: z.string().optional(),
+  groupWeight: z.number().optional(),
+  groupOverride: z.boolean().optional(),
+  ...Tier2Fields,
 });
 
 const GlobalOpRemoveSchema = z.object({

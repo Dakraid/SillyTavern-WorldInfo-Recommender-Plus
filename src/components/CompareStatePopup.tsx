@@ -2,6 +2,7 @@ import { FC, useMemo } from 'react';
 import { diffWords } from 'diff';
 import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { ReviseState, ReviseSessionType } from '../revise-types';
+import { entriesDiffer, getComparableEntryFieldChanges } from '../utils/entry-comparison.js';
 
 interface CompareStatePopupProps {
   sessionType: ReviseSessionType;
@@ -53,25 +54,22 @@ const DiffView: FC<{ originalContent: string; newContent: string }> = ({ origina
 
 const SingleEntryDiff: FC<{ before: WIEntry; after: WIEntry }> = ({ before, after }) => {
   const changedFields = useMemo(() => {
-    const changes: { label: string; before: string; after: string }[] = [];
-    if (!before || !after) return changes;
-
-    if ((before.comment || '') !== (after.comment || '')) {
-      changes.push({ label: 'Name', before: before.comment || '', after: after.comment || '' });
-    }
-    if ((before.key || []).join(', ') !== (after.key || []).join(', ')) {
-      changes.push({ label: 'Triggers', before: (before.key || []).join(', '), after: (after.key || []).join(', ') });
-    }
-    if ((before.content || '') !== (after.content || '')) {
-      changes.push({ label: 'Content', before: before.content || '', after: after.content || '' });
-    }
-    return changes;
+    if (!before || !after) return [];
+    return getComparableEntryFieldChanges(before, after);
   }, [before, after]);
+
+  if (changedFields.length === 0) {
+    return (
+      <p className="subtle" style={{ textAlign: 'center' }}>
+        No entry changes were detected for this step.
+      </p>
+    );
+  }
 
   return (
     <>
-      {changedFields.map(({ label, before, after }) => (
-        <div key={label} className="compare-state-item">
+      {changedFields.map(({ field, label, before, after }) => (
+        <div key={field} className="compare-state-item">
           <h4>{label}</h4>
           <div className="compare-state-header">
             <span>Before</span>
@@ -109,11 +107,7 @@ const GlobalDiff: FC<{ before: Record<string, WIEntry[]>; after: Record<string, 
       if (beforeMap.has(compositeKey)) {
         const beforeData = beforeMap.get(compositeKey)!;
         const beforeEntry = beforeData.entry;
-        if (
-          beforeEntry.comment !== entry.comment ||
-          beforeEntry.content !== entry.content ||
-          (beforeEntry.key || []).join(',') !== (entry.key || []).join(',')
-        ) {
+        if (entriesDiffer(beforeEntry, entry)) {
           changedEntries.push({ worldName, before: beforeEntry, after: entry });
         }
         beforeMap.delete(compositeKey);

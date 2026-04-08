@@ -1,6 +1,7 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import type { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import type { ResponseFormat } from './settings.js';
+import { EXTENDED_WI_ENTRY_FIELDS, WI_ENTRY_DEFAULTS } from './types/wi-entry-extended.js';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: true,
@@ -169,8 +170,10 @@ export function parseResponse(
 }
 
 /**
- * Gets the prefilled incomplete message for continuing generation
- * @param content The current content to continue from
+ * Gets the prefilled incomplete message for continuing generation.
+ * Intentionally includes only identity and core content fields to keep continuation prompts compact.
+ * @param worldName The lorebook world name
+ * @param entry The entry being continued
  * @param format The expected format ('xml', 'json', 'none')
  * @returns Prefilled incomplete message in the specified format
  */
@@ -208,9 +211,52 @@ export function getPrefilled(worldName: string, entry: WIEntry, format: 'xml' | 
   }
 }
 
+function getNonDefaultFields(entry: WIEntry): Partial<WIEntry> {
+  const result: Partial<WIEntry> = {};
+
+  for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+    const value = entry[field];
+    const defaultValue = WI_ENTRY_DEFAULTS[field];
+
+    if (value !== undefined && value !== null && value !== defaultValue) {
+      (result as Record<string, unknown>)[field] = value;
+    }
+  }
+
+  return result;
+}
+
+function parseLorebookEntryId(id: string | number | undefined): number {
+  if (id === undefined) {
+    return createRandomNumber(6);
+  }
+
+  if (typeof id === 'number') {
+    return id;
+  }
+
+  const trimmedId = id.trim();
+  if (!trimmedId) {
+    throw new Error('Lorebook entry id must not be empty.');
+  }
+
+  const parsedId = Number(trimmedId);
+  if (Number.isFinite(parsedId)) {
+    return parsedId;
+  }
+
+  throw new Error(`Lorebook entry id must be numeric. Received: ${id}`);
+}
+
 export function getFull(worldName: string, entry: WIEntry, format: 'xml' | 'json' | 'none'): string {
+  const extraFields = getNonDefaultFields(entry);
+
   switch (format) {
     case 'xml':
+      const extraFieldTags = Object.entries(extraFields)
+        .map(([field, value]) => `    <${field}>${String(value)}</${field}>`)
+        .join('\n');
+
       return `
 <lorebooks>
   <entry>
@@ -218,7 +264,7 @@ export function getFull(worldName: string, entry: WIEntry, format: 'xml' | 'json
     <id>${entry.uid}</id>
     <name>${entry.comment}</name>
     <triggers>${entry.key.join(',')}</triggers>
-    <content>${entry.content}</content>
+    <content>${entry.content}</content>${extraFieldTags ? `\n${extraFieldTags}` : ''}
   </entry>
 </lorebooks>`;
     case 'json':
@@ -231,6 +277,7 @@ export function getFull(worldName: string, entry: WIEntry, format: 'xml' | 'json
               name: entry.comment,
               triggers: entry.key,
               content: entry.content,
+              ...extraFields,
             },
           },
         },
@@ -250,10 +297,35 @@ export interface ParseLorebookOptions {
 
 interface ParsedLorebookEntry {
   worldName?: string;
-  id?: number;
+  id?: string | number;
   triggers?: string[] | string;
   content?: string;
   name?: string;
+  order?: number;
+  position?: number;
+  depth?: number;
+  role?: number;
+  selective?: boolean;
+  selectiveLogic?: number;
+  constant?: boolean;
+  probability?: number;
+  useProbability?: boolean;
+  group?: string;
+  groupWeight?: number;
+  groupOverride?: boolean;
+  excludeRecursion?: boolean;
+  preventRecursion?: boolean;
+  delayUntilRecursion?: number;
+  scanDepth?: number | null;
+  caseSensitive?: boolean | null;
+  matchWholeWords?: boolean | null;
+  sticky?: number | null;
+  cooldown?: number | null;
+  delay?: number | null;
+  addMemo?: boolean;
+  matchPersonaDescription?: boolean;
+  matchCharacterDescription?: boolean;
+  outletName?: string;
 }
 
 interface ParsedLorebookResponse {
@@ -314,14 +386,24 @@ export function parseLorebookResponse(
         triggers = [];
       }
 
-      entriesByWorldName[worldName].push({
-        uid: entry.id ?? createRandomNumber(6),
+      const parsedEntry: WIEntry = {
+        ...WI_ENTRY_DEFAULTS,
+        uid: parseLorebookEntryId(entry.id),
         key: triggers,
         content: entry.content ?? '',
         comment: entry.name ?? '',
         disable: false,
         keysecondary: [],
-      });
+      };
+
+      for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+        const value = entry[field as keyof ParsedLorebookEntry];
+        if (value !== undefined) {
+          (parsedEntry as unknown as Record<string, unknown>)[field] = value;
+        }
+      }
+
+      entriesByWorldName[worldName].push(parsedEntry);
     }
 
     return entriesByWorldName;

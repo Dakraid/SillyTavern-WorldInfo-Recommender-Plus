@@ -5,6 +5,7 @@ import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { st_createWorldInfoEntry } from 'sillytavern-utils-lib/config';
 import { ExtensionSettings, MessageRole, ResponseFormat } from './settings.js';
 import { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
+import { EXTENDED_WI_ENTRY_FIELDS } from './types/wi-entry-extended.js';
 
 import * as Handlebars from 'handlebars';
 
@@ -277,10 +278,10 @@ export function prepareEntryModification(
   targetEntry.key = entry.key;
   targetEntry.content = entry.content;
   targetEntry.comment = entry.comment;
-  // Optionally update other fields if the AI could suggest them, e.g.,
-  // targetEntry.scan_depth = entry.scan_depth ?? targetEntry.scan_depth;
-  // targetEntry.selective = entry.selective ?? targetEntry.selective;
-  // ... etc.
+
+  for (const field of EXTENDED_WI_ENTRY_FIELDS) {
+    (targetEntry as any)[field] = (entry as any)[field];
+  }
 
   return { modifiedEntry: targetEntry, status: isUpdate ? 'updated' : 'added' };
 }

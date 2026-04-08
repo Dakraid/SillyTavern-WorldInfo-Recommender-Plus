@@ -18,7 +18,7 @@ import { st_echo } from 'sillytavern-utils-lib/config';
 
 export const extensionName = 'SillyTavern-WorldInfo-Recommender-Plus';
 export const VERSION = '0.3.0';
-export const FORMAT_VERSION = 'F_1.5';
+export const FORMAT_VERSION = 'F_1.6';
 
 export const KEYS = {
   EXTENSION: 'worldInfoRecommender',
@@ -276,6 +276,23 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   },
 };
 
+function refreshDefaultPromptIfUncustomized(settings: ExtensionSettings, key: SystemPromptKey): void {
+  const currentPrompt = settings.prompts[key];
+  const defaultPrompt = DEFAULT_SETTINGS.prompts[key];
+
+  if (!currentPrompt) {
+    settings.prompts[key] = { ...defaultPrompt };
+    return;
+  }
+
+  if (currentPrompt.isDefault !== true) {
+    return;
+  }
+
+  currentPrompt.content = DEFAULT_PROMPT_CONTENTS[key];
+  currentPrompt.isDefault = true;
+}
+
 export function convertToVariableName(key: string) {
   // Remove non-ASCII and special characters
   const normalized = key.replace(/[^\w\s]/g, '');
@@ -451,6 +468,25 @@ export async function initializeSettings(): Promise<void> {
                 migrated.prompts.responseRules.content = DEFAULT_PROMPT_CONTENTS.responseRules;
                 migrated.prompts.responseRules.isDefault = true;
               }
+
+              return migrated;
+            },
+          },
+          {
+            from: 'F_1.5',
+            to: 'F_1.6',
+            action(previous: ExtensionSettings): ExtensionSettings {
+              const migrated = { ...previous };
+              migrated.formatVersion = 'F_1.6';
+
+              if (!migrated.prompts) {
+                migrated.prompts = { ...DEFAULT_SETTINGS.prompts };
+              }
+
+              refreshDefaultPromptIfUncustomized(migrated, 'responseRules');
+              refreshDefaultPromptIfUncustomized(migrated, 'currentLorebooks');
+              refreshDefaultPromptIfUncustomized(migrated, 'suggestedLorebooks');
+              refreshDefaultPromptIfUncustomized(migrated, 'reviseGlobalStateUpdateAddedModified');
 
               return migrated;
             },
