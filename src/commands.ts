@@ -411,6 +411,7 @@ export function initializeCommands() {
           const params: RunWorldInfoRecommendationParams = {
             profileId: profileId,
             userPrompt: userPrompt,
+            responseFormat: settings.responseFormat,
             buildPromptOptions: buildPromptOptions,
             session: session,
             entriesGroupByWorldName: allWorldInfo, // Pass the current state

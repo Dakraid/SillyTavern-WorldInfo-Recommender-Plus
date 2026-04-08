@@ -58,6 +58,8 @@ if (!Handlebars.helpers['is_not_empty']) {
   });
 }
 
+Handlebars.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+
 const globalContext = SillyTavern.getContext();
 
 const getAvatar = () => (this_chid ? st_getCharaFilename(this_chid) : selected_group);
@@ -319,6 +321,7 @@ export const MainPopup: FC = () => {
         const resultingEntries = await runWorldInfoRecommendation({
           profileId: settings.profileId,
           userPrompt: userPrompt,
+          responseFormat: settings.responseFormat,
           buildPromptOptions,
           session,
           entriesGroupByWorldName,
@@ -673,6 +676,16 @@ export const MainPopup: FC = () => {
                 // @ts-ignore
                 onChange={(profile) => updateSetting('profileId', profile?.id)}
               />
+            </div>
+            <div className="card">
+              <h3>Response Format</h3>
+              <select
+                value={settings.responseFormat}
+                onChange={(e) => updateSetting('responseFormat', e.target.value as 'xml' | 'json')}
+              >
+                <option value="xml">XML</option>
+                <option value="json">JSON</option>
+              </select>
             </div>
             <div className="card">
               <h3>Context to Send</h3>

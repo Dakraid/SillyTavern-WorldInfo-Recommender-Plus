@@ -120,7 +120,51 @@ Content: {{#if entry.content}}{{entry.content}}{{else}}*No content*{{/if}}
 {{/each}}
 {{/is_not_empty}}`;
 
-export const DEFAULT_XML_DESCRIPTION = `If you are creating a new entry you should write it like this:
+export const DEFAULT_RESPONSE_RULES = `Respond exclusively with {{responseFormat}}. Do not include any other text, explanation, or markdown outside the {{responseFormat}} structure.
+
+{{#if (eq responseFormat 'json')}}
+Respond with a JSON object using this structure:
+- "lorebooks" object containing an "entry" object (or array of entry objects for multiple entries)
+- Each entry has: "worldName" (string), "id" (number, optional - for updates), "name" (string), "triggers" (array of strings), "content" (string)
+
+Example - Creating new entries:
+\`\`\`json
+{
+  "lorebooks": {
+    "entry": [
+      {
+        "worldName": "World 1",
+        "name": "Book 1",
+        "triggers": ["word1", "word2"],
+        "content": "Content of book 1"
+      },
+      {
+        "worldName": "World 2",
+        "name": "Book 2",
+        "triggers": ["word3", "word4"],
+        "content": "Content of book 2"
+      }
+    ]
+  }
+}
+\`\`\`
+
+Example - Updating an existing entry (include the "id" field):
+\`\`\`json
+{
+  "lorebooks": {
+    "entry": {
+      "worldName": "World 1",
+      "id": 15,
+      "name": "Book 1",
+      "triggers": ["word1", "word2"],
+      "content": "Content of book 1"
+    }
+  }
+}
+\`\`\`
+{{else}}
+If you are creating a new entry you should write it like this:
 \`\`\`xml
 <lorebooks>
     <entry>
@@ -143,7 +187,8 @@ If you are updating an existing entry you should specify the id of the entry. Li
         <content>Content of book 1</content>
     </entry>
 </lorebooks>
-\`\`\``;
+\`\`\`
+{{/if}}`;
 
 export const DEFAULT_TASK_DESCRIPTION = `## Rules
 - Don't suggest already existing or suggested entries.

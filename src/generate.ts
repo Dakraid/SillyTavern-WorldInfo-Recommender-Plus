@@ -1,9 +1,9 @@
 import { buildPrompt, BuildPromptOptions, ExtensionSettingsManager, Message } from 'sillytavern-utils-lib';
 import { ExtractedData } from 'sillytavern-utils-lib/types';
-import { getFullXML, getPrefilledXML, parseXMLOwn } from './xml.js';
+import { getPrefilled, getFull, parseLorebookResponse } from './parsers.js';
 import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
 import { st_createWorldInfoEntry } from 'sillytavern-utils-lib/config';
-import { ExtensionSettings, MessageRole } from './settings.js';
+import { ExtensionSettings, MessageRole, ResponseFormat } from './settings.js';
 import { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
 
 import * as Handlebars from 'handlebars';
@@ -24,6 +24,7 @@ const dumbSettings = new ExtensionSettingsManager<ExtensionSettings>('dumb', {})
 export interface RunWorldInfoRecommendationParams {
   profileId: string;
   userPrompt: string;
+  responseFormat: ResponseFormat;
   buildPromptOptions: BuildPromptOptions;
   session: Session;
   entriesGroupByWorldName: Record<string, WIEntry[]>;
@@ -39,6 +40,7 @@ export interface RunWorldInfoRecommendationParams {
 export async function runWorldInfoRecommendation({
   profileId,
   userPrompt,
+  responseFormat,
   buildPromptOptions,
   session,
   entriesGroupByWorldName,
@@ -65,6 +67,7 @@ export async function runWorldInfoRecommendation({
   templateData['user'] = '{{user}}'; // ST going to replace this with the actual user name
   templateData['char'] = '{{char}}'; // ST going to replace this with the actual character name
   templateData['persona'] = '{{persona}}'; // ST going to replace this with the actual persona description
+  templateData['responseFormat'] = responseFormat;
 
   templateData['blackListedEntries'] = session.blackListedEntries;
   const finalUserPrompt = userPrompt.trim();
@@ -146,16 +149,16 @@ export async function runWorldInfoRecommendation({
 
     if (continueFrom) {
       if (continueFrom.mode === 'continue') {
-        // Add the incomplete XML to prompt for completion.
+        // Add the incomplete response content to prompt for completion.
         messages.push({
           role: 'assistant',
-          content: getPrefilledXML(continueFrom.worldName, continueFrom.entry),
+          content: getPrefilled(continueFrom.worldName, continueFrom.entry, responseFormat),
         });
       } else if (continueFrom.mode === 'revise') {
-        // Add the full XML of the existing entry as an assistant message.
+        // Add the full existing entry payload as an assistant message.
         messages.push({
           role: 'assistant',
-          content: getFullXML(continueFrom.worldName, continueFrom.entry),
+          content: getFull(continueFrom.worldName, continueFrom.entry, responseFormat),
         });
         // Then, add the user's revision instructions as a new user message.
         if (finalUserPrompt) {
@@ -182,7 +185,7 @@ export async function runWorldInfoRecommendation({
   if (!response.content) {
     return {};
   }
-  let parsedEntries = parseXMLOwn(response.content, {
+  let parsedEntries = parseLorebookResponse(response.content, responseFormat, {
     // Only merge with previous content if we are in 'continue' mode.
     previousContent:
       continueFrom && continueFrom.mode === 'continue' ? assistantMessageForContinue?.content : undefined,

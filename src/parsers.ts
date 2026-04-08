@@ -1,5 +1,6 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
-import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
+import type { WIEntry } from 'sillytavern-utils-lib/types/world-info';
+import type { ResponseFormat } from './settings.js';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: true,
@@ -7,6 +8,10 @@ const xmlParser = new XMLParser({
   trimValues: true,
   allowBooleanAttributes: true,
 });
+
+function createRandomNumber(length: number): number {
+  return Math.floor(Math.random() * Math.pow(10, length));
+}
 
 export interface ParseOptions {
   schema?: any;
@@ -236,5 +241,91 @@ export function getFull(worldName: string, entry: WIEntry, format: 'xml' | 'json
       return entry.content;
     default:
       throw new Error(`Unsupported format specified: ${format}`);
+  }
+}
+
+export interface ParseLorebookOptions {
+  previousContent?: string;
+}
+
+interface ParsedLorebookEntry {
+  worldName?: string;
+  id?: number;
+  triggers?: string[] | string;
+  content?: string;
+  name?: string;
+}
+
+interface ParsedLorebookResponse {
+  lorebooks?: {
+    entry?: ParsedLorebookEntry | ParsedLorebookEntry[];
+  };
+}
+
+export function parseLorebookResponse(
+  content: string,
+  format: ResponseFormat,
+  options: ParseLorebookOptions = {},
+): Record<string, WIEntry[]> {
+  if (!content?.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = parseResponse(content, format, {
+      previousContent: options.previousContent,
+    }) as ParsedLorebookResponse;
+    const lorebooks = parsed.lorebooks;
+
+    if (!lorebooks) {
+      return {};
+    }
+
+    let entries = lorebooks.entry;
+    if (!entries) {
+      return {};
+    }
+
+    if (!Array.isArray(entries)) {
+      entries = [entries];
+    }
+
+    const entriesByWorldName: Record<string, WIEntry[]> = {};
+
+    for (const entry of entries) {
+      const worldName = entry.worldName;
+      if (!worldName) {
+        continue;
+      }
+
+      if (!entriesByWorldName[worldName]) {
+        entriesByWorldName[worldName] = [];
+      }
+
+      let triggers: string[];
+      if (Array.isArray(entry.triggers)) {
+        triggers = entry.triggers;
+      } else if (typeof entry.triggers === 'string') {
+        triggers = entry.triggers
+          .split(',')
+          .map((trigger: string) => trigger.trim())
+          .filter(Boolean);
+      } else {
+        triggers = [];
+      }
+
+      entriesByWorldName[worldName].push({
+        uid: entry.id ?? createRandomNumber(6),
+        key: triggers,
+        content: entry.content ?? '',
+        comment: entry.name ?? '',
+        disable: false,
+        keysecondary: [],
+      });
+    }
+
+    return entriesByWorldName;
+  } catch (error) {
+    throw error;
   }
 }

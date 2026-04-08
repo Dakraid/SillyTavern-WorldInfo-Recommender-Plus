@@ -4,7 +4,7 @@ import {
   DEFAULT_CURRENT_LOREBOOKS,
   DEFAULT_BLACKLISTED_ENTRIES,
   DEFAULT_SUGGESTED_LOREBOOKS,
-  DEFAULT_XML_DESCRIPTION,
+  DEFAULT_RESPONSE_RULES,
   DEFAULT_TASK_DESCRIPTION,
   DEFAULT_REVISE_JSON_PROMPT,
   DEFAULT_REVISE_XML_PROMPT,
@@ -16,9 +16,9 @@ import {
 import { globalContext } from './generate.js';
 import { st_echo } from 'sillytavern-utils-lib/config';
 
-export const extensionName = 'SillyTavern-WorldInfo-Recommender';
-export const VERSION = '0.2.0';
-export const FORMAT_VERSION = 'F_1.4';
+export const extensionName = 'SillyTavern-WorldInfo-Recommender-Plus';
+export const VERSION = '0.3.0';
+export const FORMAT_VERSION = 'F_1.5';
 
 export const KEYS = {
   EXTENSION: 'worldInfoRecommender',
@@ -53,6 +53,7 @@ export interface PromptPreset {
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type PromptEngineeringMode = 'native' | 'json' | 'xml';
+export type ResponseFormat = 'xml' | 'json';
 
 export interface MainContextPromptBlock {
   promptName: string;
@@ -73,6 +74,7 @@ export interface ExtensionSettings {
   maxResponseToken: number;
   contextToSend: ContextToSend;
   defaultPromptEngineeringMode: PromptEngineeringMode;
+  responseFormat: ResponseFormat;
   prompts: {
     stDescription: PromptSetting;
     currentLorebooks: PromptSetting;
@@ -127,7 +129,7 @@ export const DEFAULT_PROMPT_CONTENTS: Record<SystemPromptKey, string> = {
   currentLorebooks: DEFAULT_CURRENT_LOREBOOKS,
   blackListedEntries: DEFAULT_BLACKLISTED_ENTRIES,
   suggestedLorebooks: DEFAULT_SUGGESTED_LOREBOOKS,
-  responseRules: DEFAULT_XML_DESCRIPTION,
+  responseRules: DEFAULT_RESPONSE_RULES,
   taskDescription: DEFAULT_TASK_DESCRIPTION,
   reviseJsonPrompt: DEFAULT_REVISE_JSON_PROMPT,
   reviseXmlPrompt: DEFAULT_REVISE_XML_PROMPT,
@@ -161,6 +163,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     suggestedEntries: true,
   },
   defaultPromptEngineeringMode: 'native',
+  responseFormat: 'xml' as ResponseFormat,
   prompts: {
     stDescription: {
       label: 'SillyTavern Description',
@@ -422,6 +425,32 @@ export async function initializeSettings(): Promise<void> {
                 isDefault: true,
                 label: 'Revise Global State (Removed)',
               };
+
+              return migrated;
+            },
+          },
+          {
+            from: 'F_1.4',
+            to: 'F_1.5',
+            action(previous: ExtensionSettings): ExtensionSettings {
+              const migrated = { ...previous };
+              migrated.formatVersion = 'F_1.5';
+              migrated.responseFormat = 'xml';
+
+              if (!migrated.prompts) migrated.prompts = {} as any;
+              if (!migrated.prompts.responseRules) {
+                migrated.prompts.responseRules = {
+                  content: DEFAULT_PROMPT_CONTENTS.responseRules,
+                  isDefault: true,
+                  label: 'Response Rules',
+                };
+                return migrated;
+              }
+
+              if (migrated.prompts.responseRules?.isDefault !== false) {
+                migrated.prompts.responseRules.content = DEFAULT_PROMPT_CONTENTS.responseRules;
+                migrated.prompts.responseRules.isDefault = true;
+              }
 
               return migrated;
             },
