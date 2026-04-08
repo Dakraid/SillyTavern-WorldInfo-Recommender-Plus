@@ -114,6 +114,91 @@ function ensureArray(data: any, schema: any) {
   }
 }
 
+const CONTENT_OPEN_TAG = '<content>';
+const CONTENT_CLOSE_TAG = '</content>';
+const CDATA_OPEN_TAG = '<![CDATA[';
+
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&(#x?[0-9a-fA-F]+|amp|lt|gt|quot|apos);/g, (entity, token: string) => {
+    switch (token) {
+      case 'amp':
+        return '&';
+      case 'lt':
+        return '<';
+      case 'gt':
+        return '>';
+      case 'quot':
+        return '"';
+      case 'apos':
+        return "'";
+      default:
+        if (!token.startsWith('#')) {
+          return entity;
+        }
+
+        const isHex = token[1]?.toLowerCase() === 'x';
+        const codePoint = Number.parseInt(token.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+        if (!Number.isFinite(codePoint)) {
+          return entity;
+        }
+
+        try {
+          return String.fromCodePoint(codePoint);
+        } catch {
+          return entity;
+        }
+    }
+  });
+}
+
+function escapeCdataTerminator(value: string): string {
+  return value.replace(/\]\]>/g, ']]]]><![CDATA[>');
+}
+
+function startsWithCdata(value: string): boolean {
+  return value.trimStart().startsWith(CDATA_OPEN_TAG);
+}
+
+/**
+ * Wraps the inner text of <content>...</content> tags in CDATA sections,
+ * so XML-like markup inside lorebook content stays plain text during parsing.
+ * Also handles an unclosed trailing <content> tag in continuation mode.
+ */
+function escapeContentTags(xml: string): string {
+  let escapedXml = '';
+  let searchIndex = 0;
+
+  while (true) {
+    const openTagIndex = xml.indexOf(CONTENT_OPEN_TAG, searchIndex);
+    if (openTagIndex === -1) {
+      return escapedXml + xml.slice(searchIndex);
+    }
+
+    escapedXml += xml.slice(searchIndex, openTagIndex);
+    const contentStartIndex = openTagIndex + CONTENT_OPEN_TAG.length;
+    const closeTagIndex = xml.indexOf(CONTENT_CLOSE_TAG, contentStartIndex);
+
+    if (closeTagIndex === -1) {
+      const trailingContent = xml.slice(contentStartIndex);
+      if (startsWithCdata(trailingContent)) {
+        return escapedXml + xml.slice(openTagIndex);
+      }
+
+      return `${escapedXml}${CONTENT_OPEN_TAG}${CDATA_OPEN_TAG}${escapeCdataTerminator(decodeXmlEntities(trailingContent))}`;
+    }
+
+    const innerContent = xml.slice(contentStartIndex, closeTagIndex);
+    if (startsWithCdata(innerContent)) {
+      escapedXml += xml.slice(openTagIndex, closeTagIndex + CONTENT_CLOSE_TAG.length);
+    } else {
+      const escapedContent = escapeCdataTerminator(decodeXmlEntities(innerContent.trim()));
+      escapedXml += `${CONTENT_OPEN_TAG}${CDATA_OPEN_TAG}${escapedContent}]]>${CONTENT_CLOSE_TAG}`;
+    }
+
+    searchIndex = closeTagIndex + CONTENT_CLOSE_TAG.length;
+  }
+}
+
 export function parseResponse(
   content: string,
   format: 'xml' | 'json' | 'none',
@@ -128,14 +213,16 @@ export function parseResponse(
     cleanedContent = previousContent + cleanedContent.trimEnd();
   }
 
+  const contentToParse = format === 'xml' ? escapeContentTags(cleanedContent) : cleanedContent;
+
   try {
     switch (format) {
       case 'xml':
-        const validationResult = XMLValidator.validate(cleanedContent);
+        const validationResult = XMLValidator.validate(contentToParse);
         if (validationResult !== true) {
           throw new Error(`Model response is not valid XML: ${validationResult.err.msg}`);
         }
-        let parsedXml = xmlParser.parse(cleanedContent);
+        let parsedXml = xmlParser.parse(contentToParse);
         if (parsedXml.root) {
           parsedXml = parsedXml.root;
         }

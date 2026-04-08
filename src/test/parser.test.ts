@@ -725,6 +725,81 @@ ${secondBlock}
     });
   });
 
+  it('parses XML content containing unclosed XML-like tags', () => {
+    const content = `
+<lorebooks>
+  <entry>
+    <worldName>0. Ultimate Furry Anatomy</worldName>
+    <name>Ultimate Furry Book - Opening</name>
+    <triggers>anthro,furry</triggers>
+    <content><ultimate-furry-book>
+
+# General Definitions
+
+<anatomy></content>
+    <order>200</order>
+  </entry>
+</lorebooks>`;
+
+    expect(parseLorebookResponse(content, 'xml')).toEqual({
+      '0. Ultimate Furry Anatomy': [
+        createExpectedEntry({
+          uid: expect.any(Number),
+          key: ['anthro', 'furry'],
+          content: '<ultimate-furry-book>\n\n# General Definitions\n\n<anatomy>',
+          comment: 'Ultimate Furry Book - Opening',
+          order: 200,
+        }),
+      ],
+    });
+  });
+
+  it('parses multiple XML entries where content contains XML-like markup', () => {
+    const content = `
+<lorebooks>
+  <entry>
+    <worldName>Test World</worldName>
+    <name>Entry 1</name>
+    <triggers>tag1</triggers>
+    <content><custom-tag>Some content &amp; stuff</custom-tag></content>
+  </entry>
+  <entry>
+    <worldName>Test World</worldName>
+    <name>Entry 2</name>
+    <triggers>tag2</triggers>
+    <content>Plain content without tags.</content>
+  </entry>
+</lorebooks>`;
+
+    const result = parseLorebookResponse(content, 'xml');
+
+    expect(result['Test World'][0].content).toBe('<custom-tag>Some content & stuff</custom-tag>');
+    expect(result['Test World'][1].content).toBe('Plain content without tags.');
+  });
+
+  it('parses XML content containing the CDATA terminator sequence', () => {
+    const content = `
+<lorebooks>
+  <entry>
+    <worldName>Test World</worldName>
+    <name>CDATA Terminator</name>
+    <triggers>tag</triggers>
+    <content>alpha ]]> omega</content>
+  </entry>
+</lorebooks>`;
+
+    expect(parseLorebookResponse(content, 'xml')).toEqual({
+      'Test World': [
+        createExpectedEntry({
+          uid: expect.any(Number),
+          key: ['tag'],
+          content: 'alpha ]]> omega',
+          comment: 'CDATA Terminator',
+        }),
+      ],
+    });
+  });
+
   it('parses XML with extra whitespace and newlines', () => {
     const content = `
 
@@ -938,6 +1013,30 @@ ${secondBlock}
           key: ['dragon', 'wyrm'],
           content: 'Dragons are ancient creatures of immense power.',
           comment: 'Dragon Lore',
+        }),
+      ],
+    });
+  });
+
+  it('handles continuation with XML-like tags in content', () => {
+    const previousContent = `
+<lorebooks>
+  <entry>
+    <worldName>Test World</worldName>
+    <name>Entry</name>
+    <triggers>tag</triggers>
+    <content><section>`;
+    const content = `More text</section></content>
+  </entry>
+</lorebooks>`;
+
+    expect(parseLorebookResponse(content, 'xml', { previousContent })).toEqual({
+      'Test World': [
+        createExpectedEntry({
+          uid: expect.any(Number),
+          key: ['tag'],
+          content: '<section>More text</section>',
+          comment: 'Entry',
         }),
       ],
     });
