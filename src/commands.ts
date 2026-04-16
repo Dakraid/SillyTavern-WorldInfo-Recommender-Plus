@@ -12,6 +12,7 @@ import {
   Session,
 } from './generate.js';
 import { ContextToSend, settingsManager } from './settings.js';
+import { findMatchingEntry } from './utils/entry-comparison.js';
 
 export function initializeCommands() {
   /**
@@ -481,9 +482,7 @@ export function initializeCommands() {
             }
 
             for (const entry of entries) {
-              const isExisting = workingWorldInfo[targetWorldName]?.some(
-                (e) => e.uid === entry.uid && e.comment === entry.comment,
-              );
+              const isExisting = !!findMatchingEntry(entry, workingWorldInfo[targetWorldName] ?? []);
 
               // Apply filters
               if (isExisting) {

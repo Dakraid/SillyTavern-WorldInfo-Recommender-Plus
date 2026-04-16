@@ -142,3 +142,37 @@ export function getExtendedFieldOverrides(entry: WIEntry): Partial<WIEntry> {
 
   return overrides;
 }
+
+/**
+ * Finds an existing entry in a world's entries that matches the given entry.
+ * Matching strategy:
+ *   1. Exact UID match (handles re-suggestions of the same entry).
+ *   2. Case-insensitive trimmed comment match when UID doesn't match
+ *      (catches AI-generated duplicates with new UIDs).
+ * Returns the matched existing entry, or undefined if no match.
+ * Skips comment matching if the incoming entry's comment is empty/whitespace-only.
+ */
+export function findMatchingEntry(entry: WIEntry, worldEntries: WIEntry[]): WIEntry | undefined {
+  const uidMatch = worldEntries.find((e) => e.uid === entry.uid);
+  if (uidMatch) return uidMatch;
+
+  const normalizedComment = (entry.comment ?? '').trim().toLowerCase();
+  if (normalizedComment === '') return undefined;
+
+  return worldEntries.find((e) => (e.comment ?? '').trim().toLowerCase() === normalizedComment);
+}
+
+/**
+ * Checks whether an entry is a duplicate of any entry already in a suggestion list.
+ * Uses OR logic (matching either UID or comment) to align with findMatchingEntry's strategy.
+ * Comment matching is case-insensitive and ignores whitespace, consistent with findMatchingEntry.
+ */
+export function isDuplicateSuggestion(entry: WIEntry, existingEntries: WIEntry[]): boolean {
+  return existingEntries.some((e) => {
+    if (e.uid === entry.uid) return true;
+    const normalizedExisting = (e.comment ?? '').trim().toLowerCase();
+    const normalizedNew = (entry.comment ?? '').trim().toLowerCase();
+    if (normalizedNew !== '' && normalizedNew === normalizedExisting) return true;
+    return false;
+  });
+}

@@ -6,6 +6,7 @@ import { st_createWorldInfoEntry } from 'sillytavern-utils-lib/config';
 import { ExtensionSettings, MessageRole, ResponseFormat } from './settings.js';
 import { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
 import { EXTENDED_WI_ENTRY_FIELDS } from './types/wi-entry-extended.js';
+import { findMatchingEntry } from './utils/entry-comparison.js';
 
 import * as Handlebars from 'handlebars';
 
@@ -281,7 +282,8 @@ export function prepareEntryModification(
   }
 
   const worldEntries = entriesGroupByWorldName[targetWorldName];
-  const existingEntryIndex = worldEntries.findIndex((e) => e.uid === entry.uid);
+  const match = findMatchingEntry(entry, worldEntries);
+  const existingEntryIndex = match ? worldEntries.indexOf(match) : -1;
   let targetEntry: WIEntry;
   const isUpdate = existingEntryIndex !== -1;
 

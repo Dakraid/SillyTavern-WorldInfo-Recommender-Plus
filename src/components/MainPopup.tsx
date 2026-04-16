@@ -30,7 +30,12 @@ import { useForceUpdate } from '../hooks/useForceUpdate.js';
 import { SelectEntriesPopup, SelectEntriesPopupRef } from './SelectEntriesPopup.js';
 import { POPUP_TYPE } from 'sillytavern-utils-lib/types/popup';
 import { ReviseSessionManager } from './ReviseSessionManager.js';
-import { entriesDiffer, getExtendedFieldOverrides } from '../utils/entry-comparison.js';
+import {
+  entriesDiffer,
+  findMatchingEntry,
+  getExtendedFieldOverrides,
+  isDuplicateSuggestion,
+} from '../utils/entry-comparison.js';
 import { WI_ENTRY_DEFAULTS } from '../types/wi-entry-extended.js';
 import { ParseFixerPopup } from './ParseFixerPopup.js';
 
@@ -72,7 +77,7 @@ function applyEntryToWorldEntries(
   entry: WIEntry,
   worldName: string,
 ): { status: 'added' | 'updated' | 'unchanged' } {
-  const existingEntry = worldEntries.find((e) => e.uid === entry.uid);
+  const existingEntry = findMatchingEntry(entry, worldEntries);
 
   if (existingEntry) {
     if (!entriesDiffer(entry, existingEntry)) return { status: 'unchanged' };
@@ -129,6 +134,7 @@ export const MainPopup: FC = () => {
 
   const selectEntriesPopupRef = useRef<SelectEntriesPopupRef>(null);
   const importPopupRef = useRef<SelectEntriesPopupRef>(null);
+  const inFlightAdditions = useRef<Set<string>>(new Set());
 
   const avatarKey = useMemo(() => getAvatar() ?? '_global', [this_chid, selected_group]);
 
@@ -242,23 +248,33 @@ export const MainPopup: FC = () => {
 
   const addEntry = useCallback(
     async (entry: WIEntry, selectedWorldName: string, skipSave = false): Promise<'added' | 'updated' | 'unchanged'> => {
-      const worldInfoCopy = structuredClone(entriesGroupByWorldName);
-      if (!worldInfoCopy[selectedWorldName]) {
-        worldInfoCopy[selectedWorldName] = [];
+      const dedupKey = `${selectedWorldName}::${entry.uid}::${(entry.comment ?? '').trim().toLowerCase()}`;
+      if (inFlightAdditions.current.has(dedupKey)) {
+        return 'unchanged';
       }
+      inFlightAdditions.current.add(dedupKey);
 
-      const { status } = applyEntryToWorldEntries(worldInfoCopy[selectedWorldName], entry, selectedWorldName);
-      setEntriesGroupByWorldName(worldInfoCopy);
+      try {
+        const worldInfoCopy = structuredClone(entriesGroupByWorldName);
+        if (!worldInfoCopy[selectedWorldName]) {
+          worldInfoCopy[selectedWorldName] = [];
+        }
 
-      if (!skipSave) {
-        const finalFormat = {
-          entries: Object.fromEntries(worldInfoCopy[selectedWorldName].map((e: WIEntry) => [e.uid, e])),
-        };
-        await globalContext.saveWorldInfo(selectedWorldName, finalFormat);
-        globalContext.reloadWorldInfoEditor(selectedWorldName, true);
+        const { status } = applyEntryToWorldEntries(worldInfoCopy[selectedWorldName], entry, selectedWorldName);
+        setEntriesGroupByWorldName(worldInfoCopy);
+
+        if (!skipSave) {
+          const finalFormat = {
+            entries: Object.fromEntries(worldInfoCopy[selectedWorldName].map((e: WIEntry) => [e.uid, e])),
+          };
+          await globalContext.saveWorldInfo(selectedWorldName, finalFormat);
+          globalContext.reloadWorldInfoEditor(selectedWorldName, true);
+        }
+
+        return status;
+      } finally {
+        inFlightAdditions.current.delete(dedupKey);
       }
-
-      return status;
     },
     [entriesGroupByWorldName],
   );
@@ -379,7 +395,7 @@ export const MainPopup: FC = () => {
               for (const [worldName, entries] of Object.entries(resultingEntries)) {
                 if (!newSuggested[worldName]) newSuggested[worldName] = [];
                 for (const entry of entries) {
-                  if (!newSuggested[worldName].some((e) => e.uid === entry.uid && e.comment === entry.comment)) {
+                  if (!isDuplicateSuggestion(entry, newSuggested[worldName])) {
                     newSuggested[worldName].push(entry);
                   }
                 }
@@ -421,7 +437,7 @@ export const MainPopup: FC = () => {
       for (const [worldName, entries] of Object.entries(parsedEntries)) {
         if (!newSuggested[worldName]) newSuggested[worldName] = [];
         for (const entry of entries) {
-          if (!newSuggested[worldName].some((e) => e.uid === entry.uid && e.comment === entry.comment)) {
+          if (!isDuplicateSuggestion(entry, newSuggested[worldName])) {
             newSuggested[worldName].push(entry);
           }
         }
@@ -480,7 +496,11 @@ export const MainPopup: FC = () => {
           const newSuggested = { ...prev.suggestedEntries };
           if (newSuggested[worldName]) {
             newSuggested[worldName] = newSuggested[worldName].filter(
-              (e) => !(e.uid === entry.uid && e.comment === entry.comment),
+              (e) =>
+                !(
+                  e.uid === entry.uid ||
+                  (entry.comment && (e.comment ?? '').trim().toLowerCase() === entry.comment.trim().toLowerCase())
+                ),
             );
           }
           return { ...prev, suggestedEntries: newSuggested };
