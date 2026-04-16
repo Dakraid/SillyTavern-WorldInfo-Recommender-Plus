@@ -65,6 +65,39 @@ const globalContext = SillyTavern.getContext();
 
 const getAvatar = () => (this_chid ? st_getCharaFilename(this_chid) : selected_group);
 
+function applyEntryToWorldEntries(
+  worldEntries: WIEntry[],
+  entry: WIEntry,
+  worldName: string,
+): { status: 'added' | 'updated' | 'unchanged' } {
+  const existingEntry = worldEntries.find((e) => e.uid === entry.uid);
+
+  if (existingEntry) {
+    if (!entriesDiffer(entry, existingEntry)) return { status: 'unchanged' };
+    Object.assign(existingEntry, {
+      key: entry.key,
+      content: entry.content,
+      comment: entry.comment,
+      ...getExtendedFieldOverrides(entry),
+    });
+    return { status: 'updated' };
+  }
+
+  const stFormat = { entries: Object.fromEntries(worldEntries.map((e) => [e.uid, e])) };
+  const newEntry = st_createWorldInfoEntry(worldName, stFormat);
+  if (!newEntry) throw new Error('Failed to create new World Info entry.');
+
+  Object.assign(newEntry, {
+    key: entry.key,
+    content: entry.content,
+    comment: entry.comment,
+    ...getExtendedFieldOverrides(entry),
+  });
+  worldEntries.push(newEntry);
+
+  return { status: 'added' };
+}
+
 export const MainPopup: FC = () => {
   const forceUpdate = useForceUpdate();
   const settings = settingsManager.getSettings();
@@ -198,49 +231,24 @@ export const MainPopup: FC = () => {
   };
 
   const addEntry = useCallback(
-    async (
-      entry: WIEntry,
-      selectedWorldName: string,
-      skipSave: boolean = false,
-    ): Promise<'added' | 'updated' | 'unchanged'> => {
+    async (entry: WIEntry, selectedWorldName: string, skipSave = false): Promise<'added' | 'updated' | 'unchanged'> => {
       const worldInfoCopy = structuredClone(entriesGroupByWorldName);
       if (!worldInfoCopy[selectedWorldName]) {
         worldInfoCopy[selectedWorldName] = [];
       }
 
-      const existingEntry = worldInfoCopy[selectedWorldName].find((e) => e.uid === entry.uid);
-      const isUpdate = !!existingEntry;
-      let targetEntry: WIEntry;
-
-      if (isUpdate) {
-        // This is an update. Check if anything actually changed.
-        if (!entriesDiffer(entry, existingEntry!)) {
-          return 'unchanged'; // Nothing to do.
-        }
-        targetEntry = existingEntry!;
-      } else {
-        const stFormat = { entries: Object.fromEntries(worldInfoCopy[selectedWorldName].map((e) => [e.uid, e])) };
-        const newEntry = st_createWorldInfoEntry(selectedWorldName, stFormat);
-        if (!newEntry) throw new Error('Failed to create new World Info entry.');
-        targetEntry = newEntry;
-        worldInfoCopy[selectedWorldName].push(targetEntry);
-      }
-
-      Object.assign(targetEntry, {
-        key: entry.key,
-        content: entry.content,
-        comment: entry.comment,
-        ...getExtendedFieldOverrides(entry),
-      });
+      const { status } = applyEntryToWorldEntries(worldInfoCopy[selectedWorldName], entry, selectedWorldName);
       setEntriesGroupByWorldName(worldInfoCopy);
 
       if (!skipSave) {
-        const finalFormat = { entries: Object.fromEntries(worldInfoCopy[selectedWorldName].map((e) => [e.uid, e])) };
+        const finalFormat = {
+          entries: Object.fromEntries(worldInfoCopy[selectedWorldName].map((e: WIEntry) => [e.uid, e])),
+        };
         await globalContext.saveWorldInfo(selectedWorldName, finalFormat);
         globalContext.reloadWorldInfoEditor(selectedWorldName, true);
       }
 
-      return isUpdate ? 'updated' : 'added';
+      return status;
     },
     [entriesGroupByWorldName],
   );
@@ -417,47 +425,81 @@ export const MainPopup: FC = () => {
     if (!confirm) return;
 
     setIsGenerating(true);
-    let addedCount = 0;
-    let updatedCount = 0;
-    let unchangedCount = 0;
-    const modifiedWorlds = new Set<string>();
-    const entriesToAdd: { worldName: string; entry: WIEntry }[] = [];
+    try {
+      // Single mutable clone for all iterations — fixes stale closure bug
+      const worldInfoCopy = structuredClone(entriesGroupByWorldName);
 
-    Object.entries(session.suggestedEntries).forEach(([worldName, entries]) => {
-      entries.forEach((entry) => {
-        const targetWorldName = allWorldNames.includes(worldName) ? worldName : (allWorldNames[0] ?? '');
-        if (targetWorldName) entriesToAdd.push({ worldName: targetWorldName, entry });
+      let addedCount = 0;
+      let updatedCount = 0;
+      let unchangedCount = 0;
+      const failedEntries: { worldName: string; entry: WIEntry }[] = [];
+      const modifiedWorlds = new Set<string>();
+      const entriesToAdd: { worldName: string; entry: WIEntry }[] = [];
+
+      // Build the flat list of entries to process
+      Object.entries(session.suggestedEntries).forEach(([worldName, entries]) => {
+        entries.forEach((entry) => {
+          const targetWorldName = allWorldNames.includes(worldName) ? worldName : (allWorldNames[0] ?? '');
+          if (targetWorldName) entriesToAdd.push({ worldName: targetWorldName, entry });
+        });
       });
-    });
 
-    for (const { worldName, entry } of entriesToAdd) {
-      try {
-        const status = await addEntry(entry, worldName, true);
-        if (status === 'added') addedCount++;
-        else if (status === 'updated') updatedCount++;
-        else unchangedCount++;
-
-        if (status !== 'unchanged') {
-          modifiedWorlds.add(worldName);
+      // Apply each entry to the SAME mutable clone
+      for (const { worldName, entry } of entriesToAdd) {
+        if (!worldInfoCopy[worldName]) {
+          worldInfoCopy[worldName] = [];
         }
-      } catch (error) {
-        st_echo('error', `Failed to process entry: ${entry.comment}`);
+        try {
+          const { status } = applyEntryToWorldEntries(worldInfoCopy[worldName], entry, worldName);
+          if (status === 'added') addedCount++;
+          else if (status === 'updated') updatedCount++;
+          else unchangedCount++;
+          if (status !== 'unchanged') modifiedWorlds.add(worldName);
+        } catch (error) {
+          st_echo('error', `Failed to process entry: ${entry.comment}`);
+          failedEntries.push({ worldName, entry });
+        }
       }
-    }
 
-    for (const worldName of modifiedWorlds) {
-      try {
-        const finalFormat = { entries: Object.fromEntries(entriesGroupByWorldName[worldName].map((e) => [e.uid, e])) };
-        await globalContext.saveWorldInfo(worldName, finalFormat);
-        globalContext.reloadWorldInfoEditor(worldName, true);
-      } catch (error) {
-        st_echo('error', `Failed to save world: ${worldName}`);
+      // Batch save from the ACTUAL modified clone
+      for (const worldName of modifiedWorlds) {
+        try {
+          const finalFormat = { entries: Object.fromEntries(worldInfoCopy[worldName].map((e: WIEntry) => [e.uid, e])) };
+          await globalContext.saveWorldInfo(worldName, finalFormat);
+          globalContext.reloadWorldInfoEditor(worldName, true);
+        } catch (error) {
+          st_echo('error', `Failed to save world: ${worldName}`);
+        }
       }
-    }
 
-    setSession((prev) => ({ ...prev, suggestedEntries: {} }));
-    st_echo('success', `Processed: ${addedCount} new, ${updatedCount} updated, ${unchangedCount} unchanged.`);
-    setIsGenerating(false);
+      // Set React state from the modified clone
+      setEntriesGroupByWorldName(worldInfoCopy);
+
+      // Only clear successfully processed suggestions; keep failed ones
+      if (failedEntries.length === 0) {
+        setSession((prev) => ({ ...prev, suggestedEntries: {} }));
+      } else {
+        setSession((prev) => {
+          const newSuggested = { ...prev.suggestedEntries };
+          const failedUids = new Set(failedEntries.map((f) => f.entry.uid));
+          for (const { worldName, entry } of entriesToAdd) {
+            if (!failedUids.has(entry.uid)) {
+              if (newSuggested[worldName]) {
+                newSuggested[worldName] = newSuggested[worldName].filter((e) => e.uid !== entry.uid);
+              }
+            }
+          }
+          for (const key of Object.keys(newSuggested)) {
+            if (newSuggested[key].length === 0) delete newSuggested[key];
+          }
+          return { ...prev, suggestedEntries: newSuggested };
+        });
+      }
+
+      st_echo('success', `Processed: ${addedCount} new, ${updatedCount} updated, ${unchangedCount} unchanged.`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleReset = async () => {
