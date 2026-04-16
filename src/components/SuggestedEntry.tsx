@@ -22,6 +22,7 @@ export interface SuggestedEntryProps {
   entriesGroupByWorldName: Record<string, WIEntry[]>;
   sessionForContext: Session;
   contextToSend: ExtensionSettings['contextToSend'];
+  generationStatus?: string;
   onAdd: (entry: WIEntry, initialWorldName: string, selectedTargetWorld: string) => void;
   onRemove: (entry: WIEntry, initialWorldName: string, isBlacklist: boolean) => void;
   onContinue: (continueFrom: {
@@ -51,6 +52,7 @@ export const SuggestedEntry: FC<SuggestedEntryProps> = ({
   entriesGroupByWorldName,
   sessionForContext,
   contextToSend,
+  generationStatus,
 }) => {
   const [selectedWorld, setSelectedWorld] = useState(() => {
     const initial = allWorldNames.find((w) => w === initialWorldName);
@@ -127,7 +129,7 @@ export const SuggestedEntry: FC<SuggestedEntryProps> = ({
             className="menu_button interactable continue"
             title="Continue writing this entry. You can provide instructions in the textbox below."
           >
-            {isContinuing ? '...' : 'Continue'}
+            {isContinuing ? generationStatus || '...' : 'Continue'}
           </STButton>
           <STButton
             onClick={handleReviseClick}
@@ -135,7 +137,7 @@ export const SuggestedEntry: FC<SuggestedEntryProps> = ({
             className="menu_button interactable revise"
             title="Request changes to this entry. Provide instructions in the textbox below."
           >
-            {isRevising ? '...' : 'Revise'}
+            {isRevising ? generationStatus || '...' : 'Revise'}
           </STButton>
           <STButton onClick={() => setIsEditing(true)} disabled={isActing} className="menu_button interactable edit">
             Edit

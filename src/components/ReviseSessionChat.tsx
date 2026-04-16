@@ -191,6 +191,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
   const [messages, setMessages] = useState<ReviseMessage[]>(session.messages);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<string>('');
   const [diffData, setDiffData] = useState<{ before: ReviseState; after: ReviseState } | null>(null);
   const [isCurrentStateOpen, setIsCurrentStateOpen] = useState(false);
   const [isEditingState, setIsEditingState] = useState(false);
@@ -316,6 +317,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
 
       optimisticUpdate();
       setIsLoading(true);
+      setRequestStatus('Building request...');
 
       try {
         const finalMessagesForRequest: ReviseMessage[] = [];
@@ -385,6 +387,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
             finalMessagesForRequest,
             settings.maxResponseToken,
             abortControllerRef.current.signal,
+            (status) => setRequestStatus(status),
           );
 
           const assistantMessage: ReviseMessage = {
@@ -409,6 +412,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
               session.promptEngineeringMode,
               settings.maxResponseToken,
               abortControllerRef.current.signal,
+              (status) => setRequestStatus(status),
             );
             newSnapshot = calculateNewState(lastState as WIEntry, response);
             justification = response.justification;
@@ -422,6 +426,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
               session.promptEngineeringMode,
               settings.maxResponseToken,
               abortControllerRef.current.signal,
+              (status) => setRequestStatus(status),
             );
             newSnapshot = calculateNewGlobalState(lastState as Record<string, WIEntry[]>, response);
             justification = response.justification;
@@ -449,6 +454,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
         }
         revertUpdate();
       } finally {
+        setRequestStatus('');
         setIsLoading(false);
         abortControllerRef.current = null;
       }
@@ -772,6 +778,7 @@ export const ReviseSessionChat: FC<ReviseSessionChatProps> = ({
           <div className="message-bubble-wrapper assistant">
             <div className="message-bubble assistant loading">
               <i className="fa-solid fa-spinner fa-spin"></i>
+              <span style={{ marginLeft: '8px' }}>{requestStatus || 'Processing...'}</span>
             </div>
             <STButton
               onClick={() => abortControllerRef.current?.abort()}

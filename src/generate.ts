@@ -36,6 +36,21 @@ export interface RunWorldInfoRecommendationParams {
   }[];
   maxResponseToken: number;
   continueFrom?: { worldName: string; entry: WIEntry; mode: 'continue' | 'revise' };
+  onStatusUpdate?: (status: string) => void;
+}
+
+export class ParseFailedError extends Error {
+  rawContent: string;
+  format: ResponseFormat;
+  previousContent?: string;
+
+  constructor(message: string, rawContent: string, format: ResponseFormat, previousContent?: string) {
+    super(message);
+    this.name = 'ParseFailedError';
+    this.rawContent = rawContent;
+    this.format = format;
+    this.previousContent = previousContent;
+  }
 }
 
 export async function runWorldInfoRecommendation({
@@ -49,6 +64,7 @@ export async function runWorldInfoRecommendation({
   mainContextList,
   maxResponseToken,
   continueFrom,
+  onStatusUpdate,
 }: RunWorldInfoRecommendationParams): Promise<Record<string, WIEntry[]>> {
   if (!profileId) {
     throw new Error('No connection profile selected.');
@@ -63,6 +79,8 @@ export async function runWorldInfoRecommendation({
   if (!selectedApi) {
     throw new Error(`Could not determine API for profile "${profile.name}".`);
   }
+
+  onStatusUpdate?.('Building prompt...');
 
   const templateData: Record<string, any> = {};
   templateData['user'] = '{{user}}'; // ST going to replace this with the actual user name
@@ -174,6 +192,8 @@ export async function runWorldInfoRecommendation({
 
   // console.log("Sending messages:", messages);
 
+  onStatusUpdate?.('Sending request...');
+
   const response = (await globalContext.ConnectionManagerRequestService.sendRequest(
     profileId,
     messages,
@@ -186,11 +206,24 @@ export async function runWorldInfoRecommendation({
   if (!response.content) {
     return {};
   }
-  let parsedEntries = parseLorebookResponse(response.content, responseFormat, {
-    // Only merge with previous content if we are in 'continue' mode.
-    previousContent:
-      continueFrom && continueFrom.mode === 'continue' ? assistantMessageForContinue?.content : undefined,
-  });
+  onStatusUpdate?.('Parsing response...');
+
+  const previousContent =
+    continueFrom && continueFrom.mode === 'continue' ? assistantMessageForContinue?.content : undefined;
+
+  let parsedEntries: Record<string, WIEntry[]>;
+  try {
+    parsedEntries = parseLorebookResponse(response.content, responseFormat, {
+      previousContent,
+    });
+  } catch (parseError: any) {
+    throw new ParseFailedError(
+      parseError instanceof Error ? parseError.message : String(parseError),
+      response.content,
+      responseFormat,
+      previousContent,
+    );
+  }
 
   if (Object.keys(parsedEntries).length === 0) {
     return {};
@@ -221,6 +254,8 @@ export async function runWorldInfoRecommendation({
   parsedEntries = continueFrom
     ? { [continueFrom.worldName]: [parsedEntries[continueFrom.worldName][0]] }
     : parsedEntries;
+
+  onStatusUpdate?.('Done');
 
   return parsedEntries;
 }

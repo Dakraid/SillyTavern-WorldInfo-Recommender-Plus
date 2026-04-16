@@ -20,8 +20,8 @@ import {
   world_names,
 } from 'sillytavern-utils-lib/config';
 import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
-import { runWorldInfoRecommendation, Session } from '../generate.js';
-import { ExtensionSettings, settingsManager } from '../settings.js';
+import { ParseFailedError, runWorldInfoRecommendation, Session } from '../generate.js';
+import { ExtensionSettings, ResponseFormat, settingsManager } from '../settings.js';
 import { Character } from 'sillytavern-utils-lib/types';
 import { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
 import { SuggestedEntry } from './SuggestedEntry.js';
@@ -31,6 +31,8 @@ import { SelectEntriesPopup, SelectEntriesPopupRef } from './SelectEntriesPopup.
 import { POPUP_TYPE } from 'sillytavern-utils-lib/types/popup';
 import { ReviseSessionManager } from './ReviseSessionManager.js';
 import { entriesDiffer, getExtendedFieldOverrides } from '../utils/entry-comparison.js';
+import { WI_ENTRY_DEFAULTS } from '../types/wi-entry-extended.js';
+import { ParseFixerPopup } from './ParseFixerPopup.js';
 
 if (!Handlebars.helpers['join']) {
   Handlebars.registerHelper('join', function (array: any, separator: any) {
@@ -116,6 +118,14 @@ export const MainPopup: FC = () => {
   const [isSelectingEntries, setIsSelectingEntries] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isGlobalReviseOpen, setIsGlobalReviseOpen] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string>('');
+  const [parseFixerData, setParseFixerData] = useState<{
+    rawContent: string;
+    format: ResponseFormat;
+    errorMessage: string;
+    previousContent?: string;
+    continueFrom?: { worldName: string; entry: WIEntry; prompt: string; mode: 'continue' | 'revise' };
+  } | null>(null);
 
   const selectEntriesPopupRef = useRef<SelectEntriesPopupRef>(null);
   const importPopupRef = useRef<SelectEntriesPopupRef>(null);
@@ -263,7 +273,9 @@ export const MainPopup: FC = () => {
         return st_echo('warning', 'Please enter a prompt.');
       }
 
+      setGenerationStatus('Building prompt...');
       setIsGenerating(true);
+      let showingFixer = false;
       try {
         const profile = globalContext.extensionSettings.connectionManager?.profiles?.find(
           (p) => p.id === settings.profileId,
@@ -340,6 +352,7 @@ export const MainPopup: FC = () => {
             .map((p) => ({ promptName: p.promptName, role: p.role })),
           maxResponseToken: settings.maxResponseToken,
           continueFrom: continueFromPayload,
+          onStatusUpdate: (status: string) => setGenerationStatus(status),
         });
 
         if (Object.keys(resultingEntries).length > 0) {
@@ -377,14 +390,80 @@ export const MainPopup: FC = () => {
         } else {
           st_echo('warning', 'No results from AI');
         }
+        setGenerationStatus('Done');
       } catch (error: any) {
-        console.error(error);
-        st_echo('error', error instanceof Error ? error.message : String(error));
+        if (error instanceof ParseFailedError) {
+          showingFixer = true;
+          setParseFixerData({
+            rawContent: error.rawContent,
+            format: error.format,
+            errorMessage: error.message,
+            previousContent: error.previousContent,
+            continueFrom,
+          });
+        } else {
+          console.error(error);
+          st_echo('error', error instanceof Error ? error.message : String(error));
+        }
       } finally {
-        setIsGenerating(false);
+        if (!showingFixer) {
+          setTimeout(() => setGenerationStatus(''), 1500);
+          setIsGenerating(false);
+        }
       }
     },
     [settings, session, entriesGroupByWorldName],
+  );
+
+  const handleParseFixerAccept = useCallback((parsedEntries: Record<string, WIEntry[]>) => {
+    setSession((prev) => {
+      const newSuggested = structuredClone(prev.suggestedEntries);
+      for (const [worldName, entries] of Object.entries(parsedEntries)) {
+        if (!newSuggested[worldName]) newSuggested[worldName] = [];
+        for (const entry of entries) {
+          if (!newSuggested[worldName].some((e) => e.uid === entry.uid && e.comment === entry.comment)) {
+            newSuggested[worldName].push(entry);
+          }
+        }
+      }
+      return { ...prev, suggestedEntries: newSuggested };
+    });
+    setParseFixerData(null);
+    setIsGenerating(false);
+    setGenerationStatus('');
+    st_echo('success', 'Manual parse succeeded!');
+  }, []);
+
+  const handleParseFixerAcceptRaw = useCallback(
+    (rawContent: string) => {
+      if (!parseFixerData) {
+        return;
+      }
+
+      const uid = Math.floor(Math.random() * 1000000);
+      const minimalEntry: WIEntry = {
+        ...WI_ENTRY_DEFAULTS,
+        uid,
+        key: ['manual'],
+        content: rawContent,
+        comment: 'Unparsed Response',
+        disable: false,
+        keysecondary: [],
+      };
+      setSession((prev) => {
+        const newSuggested = { ...prev.suggestedEntries };
+        const worldName =
+          parseFixerData.continueFrom?.worldName ?? Object.keys(entriesGroupByWorldName)[0] ?? 'unknown';
+        if (!newSuggested[worldName]) newSuggested[worldName] = [];
+        newSuggested[worldName].push(minimalEntry);
+        return { ...prev, suggestedEntries: newSuggested };
+      });
+      setParseFixerData(null);
+      setIsGenerating(false);
+      setGenerationStatus('');
+      st_echo('info', 'Raw content added as a suggestion. Edit the entry to fix structure.');
+    },
+    [entriesGroupByWorldName, parseFixerData],
   );
 
   const handleAddSingleEntry = useCallback(
@@ -996,7 +1075,7 @@ export const MainPopup: FC = () => {
                 className="menu_button interactable"
                 style={{ marginTop: '5px' }}
               >
-                {isGenerating ? 'Generating...' : 'Send Prompt'}
+                {isGenerating ? generationStatus || 'Generating...' : 'Send Prompt'}
               </STButton>
             </div>
           </div>
@@ -1048,6 +1127,7 @@ export const MainPopup: FC = () => {
                     entriesGroupByWorldName={entriesGroupByWorldName}
                     sessionForContext={session}
                     contextToSend={settings.contextToSend}
+                    generationStatus={isGenerating ? generationStatus : undefined}
                   />
                 ))}
               </div>
@@ -1113,6 +1193,32 @@ export const MainPopup: FC = () => {
           }
           onComplete={() => setIsGlobalReviseOpen(false)}
           options={{ wide: true, large: true }}
+        />
+      )}
+      {parseFixerData && (
+        <Popup
+          type={POPUP_TYPE.DISPLAY}
+          content={
+            <ParseFixerPopup
+              rawContent={parseFixerData.rawContent}
+              format={parseFixerData.format}
+              errorMessage={parseFixerData.errorMessage}
+              previousContent={parseFixerData.previousContent}
+              onAccept={handleParseFixerAccept}
+              onAcceptRaw={handleParseFixerAcceptRaw}
+              onCancel={() => {
+                setParseFixerData(null);
+                setIsGenerating(false);
+                setGenerationStatus('');
+              }}
+            />
+          }
+          onComplete={() => {
+            setParseFixerData(null);
+            setIsGenerating(false);
+            setGenerationStatus('');
+          }}
+          options={{ wide: true }}
         />
       )}
     </>

@@ -75,8 +75,28 @@ export async function makePlainRequest(
   prompt: Message[],
   maxTokens: number,
   signal?: AbortSignal,
+  onStatusUpdate?: (status: string) => void,
 ): Promise<string> {
-  const response = await makeRequest(profileId, prompt, maxTokens, {}, undefined, signal);
+  let lastReportedLength = 0;
+  onStatusUpdate?.('Sending request...');
+
+  const response = await makeRequest(
+    profileId,
+    prompt,
+    maxTokens,
+    {},
+    onStatusUpdate
+      ? {
+          onStream: ({ fullText }) => {
+            if (fullText.length - lastReportedLength >= 100) {
+              lastReportedLength = fullText.length;
+              onStatusUpdate(`Received ${fullText.length} chars...`);
+            }
+          },
+        }
+      : undefined,
+    signal,
+  );
 
   if (!response?.content) {
     throw new Error('Plain request failed to return content.');
@@ -93,14 +113,17 @@ export async function makeStructuredRequest<T extends z.ZodType<any, any, any>>(
   promptEngineeringMode: PromptEngineeringMode,
   maxResponseToken: number,
   signal?: AbortSignal,
+  onStatusUpdate?: (status: string) => void,
 ): Promise<z.infer<T>> {
   const settings = settingsManager.getSettings();
   let response: ExtractedData | undefined;
   let parsedContent: any;
+  let lastReportedLength = 0;
 
   const jsonSchema = z.toJSONSchema(schema);
 
   if (promptEngineeringMode === 'native') {
+    onStatusUpdate?.('Sending request...');
     response = await makeRequest(
       profileId,
       baseMessages,
@@ -108,12 +131,22 @@ export async function makeStructuredRequest<T extends z.ZodType<any, any, any>>(
       {
         json_schema: { name: schemaName, strict: true, value: jsonSchema },
       },
-      undefined,
+      onStatusUpdate
+        ? {
+            onStream: ({ fullText }) => {
+              if (fullText.length - lastReportedLength >= 100) {
+                lastReportedLength = fullText.length;
+                onStatusUpdate(`Received ${fullText.length} chars...`);
+              }
+            },
+          }
+        : undefined,
       signal,
     );
     if (!response?.content) {
       throw new Error(`Structured request for ${schemaName} failed to return content.`);
     }
+    onStatusUpdate?.('Parsing response...');
     parsedContent = typeof response.content === 'string' ? JSON.parse(response.content) : response.content;
   } else {
     // Manual prompt engineering for JSON or XML
@@ -135,12 +168,22 @@ export async function makeStructuredRequest<T extends z.ZodType<any, any, any>>(
     const resolvedPrompt = Handlebars.compile(promptTemplate, { noEscape: true, strict: true })(templateContext);
     const instructionMessage: Message = { role: 'system', content: resolvedPrompt };
 
+    onStatusUpdate?.('Sending request...');
     response = await makeRequest(
       profileId,
       [...baseMessages, instructionMessage],
       maxResponseToken,
       {},
-      undefined,
+      onStatusUpdate
+        ? {
+            onStream: ({ fullText }) => {
+              if (fullText.length - lastReportedLength >= 100) {
+                lastReportedLength = fullText.length;
+                onStatusUpdate(`Received ${fullText.length} chars...`);
+              }
+            },
+          }
+        : undefined,
       signal,
     );
 
@@ -148,6 +191,7 @@ export async function makeStructuredRequest<T extends z.ZodType<any, any, any>>(
       throw new Error(`Structured request for ${schemaName} failed to return content.`);
     }
 
+    onStatusUpdate?.('Parsing response...');
     parsedContent = parseResponse(response.content as string, format, { schema: jsonSchema });
   }
 
