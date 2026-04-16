@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-worldinfo-recommender-plus",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "SillyTavern-WorldInfo-Recommender-Plus, a SillyTavern extension for world info management.",
   "type": "module",
   "main": "src/index.tsx",
