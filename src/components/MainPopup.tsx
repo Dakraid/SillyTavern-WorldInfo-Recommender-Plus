@@ -1,15 +1,15 @@
-import { FC, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { type FC, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   STButton,
   STConnectionProfileSelect,
   STFancyDropdown,
   STPresetSelect,
   STTextarea,
-  PresetItem,
-  DropdownItem as FancyDropdownItem,
+  type PresetItem,
+  type DropdownItem as FancyDropdownItem,
   Popup,
 } from 'sillytavern-utils-lib/components/react';
-import { BuildPromptOptions, getWorldInfos } from 'sillytavern-utils-lib';
+import { type BuildPromptOptions, getWorldInfos } from 'sillytavern-utils-lib';
 import {
   groups,
   selected_group,
@@ -19,15 +19,15 @@ import {
   this_chid,
   world_names,
 } from 'sillytavern-utils-lib/config';
-import { WIEntry } from 'sillytavern-utils-lib/types/world-info';
-import { ParseFailedError, runWorldInfoRecommendation, Session } from '../generate.js';
-import { ExtensionSettings, ResponseFormat, settingsManager } from '../settings.js';
-import { Character } from 'sillytavern-utils-lib/types';
-import { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
+import type { WIEntry } from 'sillytavern-utils-lib/types/world-info';
+import type { Session } from '../generate.js';
+import { type ExtensionSettings, type ResponseFormat, settingsManager } from '../settings.js';
+import type { Character } from 'sillytavern-utils-lib/types';
+import type { RegexScriptData } from 'sillytavern-utils-lib/types/regex';
 import { SuggestedEntry } from './SuggestedEntry.js';
 import * as Handlebars from 'handlebars';
 import { useForceUpdate } from '../hooks/useForceUpdate.js';
-import { SelectEntriesPopup, SelectEntriesPopupRef } from './SelectEntriesPopup.js';
+import { SelectEntriesPopup, type SelectEntriesPopupRef } from './SelectEntriesPopup.js';
 import { POPUP_TYPE } from 'sillytavern-utils-lib/types/popup';
 import { ReviseSessionManager } from './ReviseSessionManager.js';
 import {
@@ -38,9 +38,16 @@ import {
 } from '../utils/entry-comparison.js';
 import { WI_ENTRY_DEFAULTS } from '../types/wi-entry-extended.js';
 import { ParseFixerPopup } from './ParseFixerPopup.js';
+import { parseLorebookResponse } from '../parsers.js';
+import {
+  clearGenerationResults,
+  getGenerationState,
+  startGeneration,
+  subscribeGeneration,
+} from '../background-generation.js';
 
 if (!Handlebars.helpers['join']) {
-  Handlebars.registerHelper('join', function (array: any, separator: any) {
+  Handlebars.registerHelper('join', (array: any, separator: any) => {
     if (Array.isArray(array)) {
       return array.join(typeof separator === 'string' ? separator : ', ');
     }
@@ -105,6 +112,72 @@ function applyEntryToWorldEntries(
   return { status: 'added' };
 }
 
+function mergeSuggestedEntries(
+  currentSuggested: Record<string, WIEntry[]>,
+  parsedEntries: Record<string, WIEntry[]>,
+): { suggestedEntries: Record<string, WIEntry[]>; addedCount: number } {
+  const newSuggested = structuredClone(currentSuggested);
+  let addedCount = 0;
+
+  for (const [worldName, entries] of Object.entries(parsedEntries)) {
+    if (!newSuggested[worldName]) newSuggested[worldName] = [];
+    for (const entry of entries) {
+      if (!isDuplicateSuggestion(entry, newSuggested[worldName])) {
+        newSuggested[worldName].push(entry);
+        addedCount++;
+      }
+    }
+  }
+
+  return { suggestedEntries: newSuggested, addedCount };
+}
+
+interface PasteBodyPopupProps {
+  initialFormat: ResponseFormat;
+  onSubmit: (body: string, format: ResponseFormat) => boolean;
+  onClose: () => void;
+}
+
+const PasteBodyPopup: FC<PasteBodyPopupProps> = ({ initialFormat, onSubmit, onClose }) => {
+  const [format, setFormat] = useState<ResponseFormat>(initialFormat);
+  const [body, setBody] = useState('');
+
+  const handleSubmit = () => {
+    if (onSubmit(body, format)) {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="card">
+      <h3>Paste Lorebook Body</h3>
+      <label>
+        Format
+        <select className="text_pole" value={format} onChange={(e) => setFormat(e.target.value as ResponseFormat)}>
+          <option value="xml">XML</option>
+          <option value="json">JSON</option>
+        </select>
+      </label>
+      <p>Parsed entries are added to Suggested Entries. Edit them there before committing.</p>
+      <STTextarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Paste lorebook JSON or XML here..."
+        rows={10}
+        style={{ marginTop: '5px', width: '100%' }}
+      />
+      <div className="actions" style={{ marginTop: '10px' }}>
+        <STButton onClick={handleSubmit} className="menu_button interactable">
+          Parse Body
+        </STButton>
+        <STButton onClick={onClose} className="menu_button interactable">
+          Cancel
+        </STButton>
+      </div>
+    </div>
+  );
+};
+
 export const MainPopup: FC = () => {
   const forceUpdate = useForceUpdate();
   const settings = settingsManager.getSettings();
@@ -119,11 +192,11 @@ export const MainPopup: FC = () => {
   const [entriesGroupByWorldName, setEntriesGroupByWorldName] = useState<Record<string, WIEntry[]>>({});
   const [groupMembers, setGroupMembers] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAddingAll, setIsAddingAll] = useState(false);
   const [isSelectingEntries, setIsSelectingEntries] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isPastingBody, setIsPastingBody] = useState(false);
   const [isGlobalReviseOpen, setIsGlobalReviseOpen] = useState(false);
-  const [generationStatus, setGenerationStatus] = useState<string>('');
   const [parseFixerData, setParseFixerData] = useState<{
     rawContent: string;
     format: ResponseFormat;
@@ -137,6 +210,79 @@ export const MainPopup: FC = () => {
   const inFlightAdditions = useRef<Set<string>>(new Set());
 
   const avatarKey = useMemo(() => getAvatar() ?? '_global', [this_chid, selected_group]);
+  const generationState = getGenerationState();
+  const isGenerating = generationState.isRunning;
+  const generationStatus = generationState.status;
+
+  const claimGenerationState = useCallback(() => {
+    const state = getGenerationState();
+
+    if (state.results) {
+      const results = state.results;
+      const continueFrom = state.continueFrom;
+
+      setSession((prev) => {
+        if (continueFrom) {
+          const newSuggested = structuredClone(prev.suggestedEntries);
+          const worldName = continueFrom.worldName;
+          const updatedEntry = results[worldName]?.[0];
+
+          if (newSuggested[worldName] && updatedEntry) {
+            const entryIndex = newSuggested[worldName].findIndex(
+              (e) => e.uid === continueFrom.entry.uid && e.comment === continueFrom.entry.comment,
+            );
+
+            if (entryIndex !== -1) {
+              newSuggested[worldName][entryIndex] = updatedEntry;
+            }
+          }
+          return { ...prev, suggestedEntries: newSuggested };
+        }
+
+        const { suggestedEntries } = mergeSuggestedEntries(prev.suggestedEntries, results);
+        return { ...prev, suggestedEntries };
+      });
+      clearGenerationResults();
+      return;
+    }
+
+    if (state.error) {
+      const error = state.error;
+      if (error.rawContent && error.format) {
+        setParseFixerData({
+          rawContent: error.rawContent,
+          format: error.format,
+          errorMessage: error.message,
+          previousContent: error.previousContent,
+          continueFrom: error.continueFrom,
+        });
+      } else {
+        st_echo('error', error.message);
+      }
+      clearGenerationResults();
+      return;
+    }
+
+    if (state.finishedAt && state.status === 'No results') {
+      st_echo('warning', 'No results from AI');
+      clearGenerationResults();
+    }
+  }, []);
+
+  useEffect(() => {
+    const claimIfReady = () => {
+      if (!isLoading) {
+        claimGenerationState();
+      }
+    };
+
+    claimIfReady();
+    const unsubscribe = subscribeGeneration(() => {
+      claimIfReady();
+      forceUpdate();
+    });
+    return unsubscribe;
+  }, [claimGenerationState, forceUpdate, isLoading]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -289,164 +435,96 @@ export const MainPopup: FC = () => {
         return st_echo('warning', 'Please enter a prompt.');
       }
 
-      setGenerationStatus('Building prompt...');
-      setIsGenerating(true);
-      let showingFixer = false;
-      try {
-        const profile = globalContext.extensionSettings.connectionManager?.profiles?.find(
-          (p) => p.id === settings.profileId,
-        );
-        if (!profile) throw new Error('Connection profile not found.');
+      if (getGenerationState().isRunning) {
+        return st_echo('warning', 'Generation already in progress.');
+      }
 
-        const avatar = getAvatar();
-        const buildPromptOptions: BuildPromptOptions = {
-          presetName: profile.preset,
-          contextName: profile.context,
-          instructName: profile.instruct,
-          syspromptName: profile.sysprompt,
-          ignoreCharacterFields: !settings.contextToSend.charCard,
-          ignoreWorldInfo: true,
-          ignoreAuthorNote: !settings.contextToSend.authorNote,
-          maxContext:
-            settings.maxContextType === 'custom'
-              ? settings.maxContextValue
-              : settings.maxContextType === 'profile'
-                ? 'preset'
-                : 'active',
-          includeNames: !!selected_group,
-        };
+      const profile = globalContext.extensionSettings.connectionManager?.profiles?.find(
+        (p) => p.id === settings.profileId,
+      );
+      if (!profile) return st_echo('error', 'Connection profile not found.');
 
-        if (!avatar) {
-          buildPromptOptions.messageIndexesBetween = { start: -1, end: -1 };
-        } else {
-          switch (settings.contextToSend.messages.type) {
-            case 'none':
-              buildPromptOptions.messageIndexesBetween = { start: -1, end: -1 };
-              break;
-            case 'first':
-              buildPromptOptions.messageIndexesBetween = { start: 0, end: settings.contextToSend.messages.first ?? 10 };
-              break;
-            case 'last': {
-              const lastCount = settings.contextToSend.messages.last ?? 10;
-              const chatLength = globalContext.chat?.length ?? 0;
-              buildPromptOptions.messageIndexesBetween = {
-                end: Math.max(0, chatLength - 1),
-                start: Math.max(0, chatLength - lastCount),
-              };
-              break;
-            }
-            case 'range':
-              if (settings.contextToSend.messages.range)
-                buildPromptOptions.messageIndexesBetween = settings.contextToSend.messages.range;
-              break;
+      const avatar = getAvatar();
+      const buildPromptOptions: BuildPromptOptions = {
+        presetName: profile.preset,
+        contextName: profile.context,
+        instructName: profile.instruct,
+        syspromptName: profile.sysprompt,
+        ignoreCharacterFields: !settings.contextToSend.charCard,
+        ignoreWorldInfo: true,
+        ignoreAuthorNote: !settings.contextToSend.authorNote,
+        maxContext:
+          settings.maxContextType === 'custom'
+            ? settings.maxContextValue
+            : settings.maxContextType === 'profile'
+              ? 'preset'
+              : 'active',
+        includeNames: !!selected_group,
+      };
+
+      if (!avatar) {
+        buildPromptOptions.messageIndexesBetween = { start: -1, end: -1 };
+      } else {
+        switch (settings.contextToSend.messages.type) {
+          case 'none':
+            buildPromptOptions.messageIndexesBetween = { start: -1, end: -1 };
+            break;
+          case 'first':
+            buildPromptOptions.messageIndexesBetween = { start: 0, end: settings.contextToSend.messages.first ?? 10 };
+            break;
+          case 'last': {
+            const lastCount = settings.contextToSend.messages.last ?? 10;
+            const chatLength = globalContext.chat?.length ?? 0;
+            buildPromptOptions.messageIndexesBetween = {
+              end: Math.max(0, chatLength - 1),
+              start: Math.max(0, chatLength - lastCount),
+            };
+            break;
           }
-        }
-
-        const promptSettings = structuredClone(settings.prompts);
-        if (!settings.contextToSend.stDescription) delete (promptSettings as any).stDescription;
-        if (!settings.contextToSend.worldInfo || session.selectedWorldNames.length === 0)
-          delete (promptSettings as any).currentLorebooks;
-        const anySuggestedEntries = Object.values(session.suggestedEntries).some((e) => e.length > 0);
-        if (!settings.contextToSend.suggestedEntries || !anySuggestedEntries)
-          delete (promptSettings as any).suggestedLorebooks;
-        if (session.blackListedEntries.length === 0) delete (promptSettings as any).blackListedEntries;
-
-        const continueFromPayload = continueFrom
-          ? { worldName: continueFrom.worldName, entry: continueFrom.entry, mode: continueFrom.mode }
-          : undefined;
-
-        const resultingEntries = await runWorldInfoRecommendation({
-          profileId: settings.profileId,
-          userPrompt: userPrompt,
-          responseFormat: settings.responseFormat,
-          buildPromptOptions,
-          session,
-          entriesGroupByWorldName,
-          promptSettings,
-          mainContextList: settings.mainContextTemplatePresets[settings.mainContextTemplatePreset].prompts
-            .filter((p) => p.enabled)
-            .map((p) => ({ promptName: p.promptName, role: p.role })),
-          maxResponseToken: settings.maxResponseToken,
-          continueFrom: continueFromPayload,
-          onStatusUpdate: (status: string) => setGenerationStatus(status),
-        });
-
-        if (Object.keys(resultingEntries).length > 0) {
-          if (continueFrom) {
-            setSession((prev) => {
-              const newSuggested = structuredClone(prev.suggestedEntries);
-              const worldName = continueFrom.worldName;
-              const updatedEntry = resultingEntries[worldName]?.[0];
-
-              if (newSuggested[worldName] && updatedEntry) {
-                const entryIndex = newSuggested[worldName].findIndex(
-                  (e) => e.uid === continueFrom.entry.uid && e.comment === continueFrom.entry.comment,
-                );
-
-                if (entryIndex !== -1) {
-                  newSuggested[worldName][entryIndex] = updatedEntry;
-                }
-              }
-              return { ...prev, suggestedEntries: newSuggested };
-            });
-          } else {
-            setSession((prev) => {
-              const newSuggested = structuredClone(prev.suggestedEntries);
-              for (const [worldName, entries] of Object.entries(resultingEntries)) {
-                if (!newSuggested[worldName]) newSuggested[worldName] = [];
-                for (const entry of entries) {
-                  if (!isDuplicateSuggestion(entry, newSuggested[worldName])) {
-                    newSuggested[worldName].push(entry);
-                  }
-                }
-              }
-              return { ...prev, suggestedEntries: newSuggested };
-            });
-          }
-        } else {
-          st_echo('warning', 'No results from AI');
-        }
-        setGenerationStatus('Done');
-      } catch (error: any) {
-        if (error instanceof ParseFailedError) {
-          showingFixer = true;
-          setParseFixerData({
-            rawContent: error.rawContent,
-            format: error.format,
-            errorMessage: error.message,
-            previousContent: error.previousContent,
-            continueFrom,
-          });
-        } else {
-          console.error(error);
-          st_echo('error', error instanceof Error ? error.message : String(error));
-        }
-      } finally {
-        if (!showingFixer) {
-          setTimeout(() => setGenerationStatus(''), 1500);
-          setIsGenerating(false);
+          case 'range':
+            if (settings.contextToSend.messages.range)
+              buildPromptOptions.messageIndexesBetween = settings.contextToSend.messages.range;
+            break;
         }
       }
+
+      const promptSettings = structuredClone(settings.prompts);
+      if (!settings.contextToSend.stDescription) delete (promptSettings as any).stDescription;
+      if (!settings.contextToSend.worldInfo || session.selectedWorldNames.length === 0)
+        delete (promptSettings as any).currentLorebooks;
+      const anySuggestedEntries = Object.values(session.suggestedEntries).some((e) => e.length > 0);
+      if (!settings.contextToSend.suggestedEntries || !anySuggestedEntries)
+        delete (promptSettings as any).suggestedLorebooks;
+      if (session.blackListedEntries.length === 0) delete (promptSettings as any).blackListedEntries;
+
+      const continueFromPayload = continueFrom
+        ? { worldName: continueFrom.worldName, entry: continueFrom.entry, mode: continueFrom.mode }
+        : undefined;
+
+      startGeneration({
+        profileId: settings.profileId,
+        userPrompt,
+        responseFormat: settings.responseFormat,
+        buildPromptOptions,
+        session: structuredClone(session),
+        entriesGroupByWorldName: structuredClone(entriesGroupByWorldName),
+        promptSettings,
+        mainContextList: settings.mainContextTemplatePresets[settings.mainContextTemplatePreset].prompts
+          .filter((p) => p.enabled)
+          .map((p) => ({ promptName: p.promptName, role: p.role })),
+        maxResponseToken: settings.maxResponseToken,
+        continueFrom: continueFromPayload,
+      });
     },
     [settings, session, entriesGroupByWorldName],
   );
 
   const handleParseFixerAccept = useCallback((parsedEntries: Record<string, WIEntry[]>) => {
     setSession((prev) => {
-      const newSuggested = structuredClone(prev.suggestedEntries);
-      for (const [worldName, entries] of Object.entries(parsedEntries)) {
-        if (!newSuggested[worldName]) newSuggested[worldName] = [];
-        for (const entry of entries) {
-          if (!isDuplicateSuggestion(entry, newSuggested[worldName])) {
-            newSuggested[worldName].push(entry);
-          }
-        }
-      }
-      return { ...prev, suggestedEntries: newSuggested };
+      const { suggestedEntries } = mergeSuggestedEntries(prev.suggestedEntries, parsedEntries);
+      return { ...prev, suggestedEntries };
     });
     setParseFixerData(null);
-    setIsGenerating(false);
-    setGenerationStatus('');
     st_echo('success', 'Manual parse succeeded!');
   }, []);
 
@@ -475,8 +553,6 @@ export const MainPopup: FC = () => {
         return { ...prev, suggestedEntries: newSuggested };
       });
       setParseFixerData(null);
-      setIsGenerating(false);
-      setGenerationStatus('');
       st_echo('info', 'Raw content added as a suggestion. Edit the entry to fix structure.');
     },
     [entriesGroupByWorldName, parseFixerData],
@@ -523,7 +599,7 @@ export const MainPopup: FC = () => {
     );
     if (!confirm) return;
 
-    setIsGenerating(true);
+    setIsAddingAll(true);
     try {
       // Single mutable clone for all iterations — fixes stale closure bug
       const worldInfoCopy = structuredClone(entriesGroupByWorldName);
@@ -597,7 +673,7 @@ export const MainPopup: FC = () => {
 
       st_echo('success', `Processed: ${addedCount} new, ${updatedCount} updated, ${unchangedCount} unchanged.`);
     } finally {
-      setIsGenerating(false);
+      setIsAddingAll(false);
     }
   };
 
@@ -690,6 +766,35 @@ export const MainPopup: FC = () => {
       });
     },
     [entriesGroupByWorldName],
+  );
+
+  const handlePasteBody = useCallback(
+    (body: string, format: ResponseFormat): boolean => {
+      if (!body.trim()) {
+        st_echo('warning', 'Nothing to parse.');
+        return false;
+      }
+
+      try {
+        const parsedEntries = parseLorebookResponse(body, format, {});
+        const { addedCount } = mergeSuggestedEntries(session.suggestedEntries, parsedEntries);
+        setSession((prev) => {
+          const mergeResult = mergeSuggestedEntries(prev.suggestedEntries, parsedEntries);
+          return { ...prev, suggestedEntries: mergeResult.suggestedEntries };
+        });
+
+        if (addedCount > 0) {
+          st_echo('success', `Parsed ${addedCount} entries.`);
+        } else {
+          st_echo('info', 'No entries found in body.');
+        }
+        return true;
+      } catch (err: any) {
+        st_echo('error', `Failed to parse: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+      }
+    },
+    [session.suggestedEntries],
   );
 
   const entriesForSelectionPopup = useMemo(() => {
@@ -810,7 +915,7 @@ export const MainPopup: FC = () => {
               <h3>Connection Profile</h3>
               <STConnectionProfileSelect
                 initialSelectedProfileId={settings.profileId}
-                // @ts-ignore
+                // @ts-expect-error
                 onChange={(profile) => updateSetting('profileId', profile?.id)}
               />
             </div>
@@ -1105,7 +1210,7 @@ export const MainPopup: FC = () => {
               <div className="actions">
                 <STButton
                   onClick={handleAddAll}
-                  disabled={isGenerating || suggestedEntriesList.length === 0}
+                  disabled={isGenerating || isAddingAll || suggestedEntriesList.length === 0}
                   className="menu_button interactable"
                 >
                   Add All
@@ -1125,6 +1230,14 @@ export const MainPopup: FC = () => {
                   title="Import existing entries to continue/revise them"
                 >
                   Import Entry
+                </STButton>
+                <STButton
+                  onClick={() => setIsPastingBody(true)}
+                  disabled={isGenerating}
+                  className="menu_button interactable"
+                  title="Paste a JSON or XML lorebook body and parse it into suggestions"
+                >
+                  <i className="fa-solid fa-paste"></i> Paste Body
                 </STButton>
                 <STButton onClick={handleReset} disabled={isGenerating} className="menu_button interactable">
                   Reset
@@ -1197,6 +1310,20 @@ export const MainPopup: FC = () => {
           options={{ wide: true }}
         />
       )}
+      {isPastingBody && (
+        <Popup
+          type={POPUP_TYPE.DISPLAY}
+          content={
+            <PasteBodyPopup
+              initialFormat={settings.responseFormat}
+              onSubmit={handlePasteBody}
+              onClose={() => setIsPastingBody(false)}
+            />
+          }
+          onComplete={() => setIsPastingBody(false)}
+          options={{ wide: true }}
+        />
+      )}
       {isGlobalReviseOpen && (
         <Popup
           type={POPUP_TYPE.DISPLAY}
@@ -1228,15 +1355,11 @@ export const MainPopup: FC = () => {
               onAcceptRaw={handleParseFixerAcceptRaw}
               onCancel={() => {
                 setParseFixerData(null);
-                setIsGenerating(false);
-                setGenerationStatus('');
               }}
             />
           }
           onComplete={() => {
             setParseFixerData(null);
-            setIsGenerating(false);
-            setGenerationStatus('');
           }}
           options={{ wide: true }}
         />
